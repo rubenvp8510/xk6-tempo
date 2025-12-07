@@ -1,4 +1,11 @@
-.PHONY: build test clean run-example install-xk6
+.PHONY: build test clean run-example install-xk6 docker-build docker-push
+
+# Docker image configuration
+DOCKER_REGISTRY ?= quay.io
+DOCKER_REPO ?= rvargasp
+DOCKER_IMAGE ?= xk6-tempo
+DOCKER_TAG ?= latest
+DOCKER_FULL_IMAGE = $(DOCKER_REGISTRY)/$(DOCKER_REPO)/$(DOCKER_IMAGE):$(DOCKER_TAG)
 
 # Find Go binary and add common paths to PATH
 # Try to find Go in common locations
@@ -52,4 +59,14 @@ clean:
 deps:
 	$(GO_CMD) mod download
 	$(GO_CMD) mod tidy
+
+# Build Docker image
+docker-build:
+	@echo "Building Docker image $(DOCKER_FULL_IMAGE)..."
+	docker build -t $(DOCKER_FULL_IMAGE) .
+
+# Push Docker image to registry
+docker-push: docker-build
+	@echo "Pushing Docker image $(DOCKER_FULL_IMAGE)..."
+	docker push $(DOCKER_FULL_IMAGE)
 
