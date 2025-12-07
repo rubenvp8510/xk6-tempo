@@ -18,10 +18,10 @@ export const options = {
   },
 };
 
-const client = new tempo.Client({
+const client = tempo.QueryClient({
   endpoint: __ENV.TEMPO_ENDPOINT || 'http://localhost:3200',
-  protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
   tenant: __ENV.TEMPO_TENANT || '',
+  bearerToken: __ENV.TEMPO_TOKEN || '',
   timeout: 30,
 });
 

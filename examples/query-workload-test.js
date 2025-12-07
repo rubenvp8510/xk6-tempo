@@ -18,10 +18,10 @@ export const options = {
   },
 };
 
-const client = new tempo.Client({
+const client = tempo.QueryClient({
   endpoint: __ENV.TEMPO_ENDPOINT || 'http://localhost:3200',
-  protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
   tenant: __ENV.TEMPO_TENANT || '',
+  bearerToken: __ENV.TEMPO_TOKEN || '',
   timeout: 30,
 });
 
@@ -93,7 +93,7 @@ let workload = null;
 
 export function setup() {
   // Create workload (called once per VU)
-  workload = client.createQueryWorkload(workloadConfig, queries);
+  workload = tempo.createQueryWorkload(client, workloadConfig, queries);
   if (!workload) {
     throw new Error('Failed to create query workload');
   }
@@ -108,7 +108,7 @@ export default function() {
   // 4. Execute search query
   // 5. Probabilistically fetch full trace (based on traceFetchProbability)
   // 6. Handle backoff on 429/5xx responses
-  const err = client.executeWorkloadSearchAndFetch();
+  const err = workload.executeSearchAndFetch();
   if (err) {
     console.error('Workload query failed:', err);
   }

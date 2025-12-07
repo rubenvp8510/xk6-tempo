@@ -16,10 +16,10 @@ export const options = {
   },
 };
 
-const client = new tempo.Client({
-  endpoint: __ENV.TEMPO_ENDPOINT || 'http://localhost:4318',
-  protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
-  tenant: __ENV.TEMPO_TENANT || '',
+const client = tempo.IngestClient({
+  endpoint: 'tempo-simplest:4317',
+  protocol: 'otlp-grpc',
+  tenant:  'tenant-1',
   timeout: 30,
 });
 

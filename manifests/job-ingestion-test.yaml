@@ -17,16 +17,9 @@ spec:
       restartPolicy: Never
       containers:
       - name: k6
-        image: image-registry.openshift-image-registry.svc:5000/YOUR_PROJECT/xk6-tempo:latest
+        image: quay.io/rvargasp/xk6-tempo:latest
         imagePullPolicy: Always
         command: ["k6", "run", "/scripts/ingestion-test.js"]
-        env:
-        - name: TEMPO_ENDPOINT
-          value: "http://tempo-distributor.tempo.svc.cluster.local:4318"
-        - name: TEMPO_PROTOCOL
-          value: "otlp-http"
-        - name: TEMPO_TENANT
-          value: ""  # Set if using multi-tenancy
         volumeMounts:
         - name: test-scripts
           mountPath: /scripts

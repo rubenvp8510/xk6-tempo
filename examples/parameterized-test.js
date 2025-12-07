@@ -30,7 +30,7 @@ export const options = {
   },
 };
 
-const client = new tempo.Client({
+const client = tempo.IngestClient({
   endpoint: __ENV.TEMPO_ENDPOINT || 'http://localhost:4318',
   protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
   tenant: __ENV.TEMPO_TENANT || '',

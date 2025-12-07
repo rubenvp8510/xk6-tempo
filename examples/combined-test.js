@@ -24,17 +24,16 @@ export const options = {
   },
 };
 
-const ingestionClient = new tempo.Client({
-  endpoint: __ENV.TEMPO_ENDPOINT || 'http://localhost:4318',
-  protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
-  tenant: __ENV.TEMPO_TENANT || '',
+const ingestionClient = tempo.IngestClient({
+  endpoint: 'tempo-simplest:4317',
+  protocol: 'otlp-grpc',
+  tenant: 'tenant-1',
   timeout: 30,
 });
 
-const queryClient = new tempo.Client({
-  endpoint: __ENV.TEMPO_ENDPOINT || 'http://localhost:3200',
-  protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
-  tenant: __ENV.TEMPO_TENANT || '',
+const queryClient = tempo.QueryClient({
+  endpoint: 'https://tempo-simplest-gateway:8080',
+  tenant: 'tenant-1',
   timeout: 30,
 });
 

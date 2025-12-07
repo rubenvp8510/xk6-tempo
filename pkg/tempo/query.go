@@ -81,8 +81,20 @@ type QueryClient struct {
 }
 
 // NewQueryClient creates a new query client
-func NewQueryClient(baseURL string, tenant string, bearerToken string, timeout time.Duration) *QueryClient {
+func NewQueryClient(config QueryConfig) (*QueryClient, error) {
+	timeout := time.Duration(config.Timeout) * time.Second
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	// Resolve bearer token
+	bearerToken, err := ResolveBearerToken(config.BearerToken, config.BearerTokenFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve bearer token: %w", err)
+	}
+
 	// Ensure baseURL doesn't end with /
+	baseURL := config.Endpoint
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
 		baseURL = baseURL[:len(baseURL)-1]
 	}
@@ -92,9 +104,9 @@ func NewQueryClient(baseURL string, tenant string, bearerToken string, timeout t
 			Timeout: timeout,
 		},
 		baseURL:     baseURL,
-		tenant:      tenant,
+		tenant:      config.Tenant,
 		bearerToken: bearerToken,
-	}
+	}, nil
 }
 
 // SearchResponseWithHTTP wraps SearchResponse with HTTP response info
@@ -103,14 +115,14 @@ type SearchResponseWithHTTP struct {
 	HTTPResponse *http.Response
 }
 
-// Search performs a TraceQL search query
-func (c *QueryClient) Search(ctx context.Context, query string, options QueryOptions) (*SearchResponse, error) {
-	result, _, err := c.SearchWithHTTP(ctx, query, options)
+// search performs a TraceQL search query (internal, requires context)
+func (c *QueryClient) search(ctx context.Context, query string, options QueryOptions) (*SearchResponse, error) {
+	result, _, err := c.searchWithHTTP(ctx, query, options)
 	return result, err
 }
 
-// SearchWithHTTP performs a TraceQL search query and returns HTTP response info
-func (c *QueryClient) SearchWithHTTP(ctx context.Context, query string, options QueryOptions) (*SearchResponse, *http.Response, error) {
+// searchWithHTTP performs a TraceQL search query and returns HTTP response info (internal, requires context)
+func (c *QueryClient) searchWithHTTP(ctx context.Context, query string, options QueryOptions) (*SearchResponse, *http.Response, error) {
 	// Build URL
 	apiURL := c.baseURL + "/api/search"
 
@@ -182,14 +194,14 @@ func (c *QueryClient) SearchWithHTTP(ctx context.Context, query string, options 
 	return &searchResp, resp, nil
 }
 
-// GetTrace retrieves a full trace by trace ID
-func (c *QueryClient) GetTrace(ctx context.Context, traceID string) (*Trace, error) {
-	result, _, err := c.GetTraceWithHTTP(ctx, traceID)
+// getTrace retrieves a full trace by trace ID (internal, requires context)
+func (c *QueryClient) getTrace(ctx context.Context, traceID string) (*Trace, error) {
+	result, _, err := c.getTraceWithHTTP(ctx, traceID)
 	return result, err
 }
 
-// GetTraceWithHTTP retrieves a full trace by trace ID and returns HTTP response info
-func (c *QueryClient) GetTraceWithHTTP(ctx context.Context, traceID string) (*Trace, *http.Response, error) {
+// getTraceWithHTTP retrieves a full trace by trace ID and returns HTTP response info (internal, requires context)
+func (c *QueryClient) getTraceWithHTTP(ctx context.Context, traceID string) (*Trace, *http.Response, error) {
 	// Build URL - Tempo API v2
 	apiURL := fmt.Sprintf("%s/api/traces/%s", c.baseURL, traceID)
 
@@ -231,6 +243,32 @@ func (c *QueryClient) GetTraceWithHTTP(ctx context.Context, traceID string) (*Tr
 	resp.Body.Close()
 
 	return &trace, resp, nil
+}
+
+// JavaScript-friendly wrapper methods (exported, no context parameter required)
+
+// Search performs a TraceQL search query (JavaScript-friendly)
+func (c *QueryClient) Search(query string, options QueryOptions) (*SearchResponse, error) {
+	ctx := context.Background()
+	return c.search(ctx, query, options)
+}
+
+// SearchWithHTTP performs a TraceQL search query and returns HTTP response info (JavaScript-friendly)
+func (c *QueryClient) SearchWithHTTP(query string, options QueryOptions) (*SearchResponse, *http.Response, error) {
+	ctx := context.Background()
+	return c.searchWithHTTP(ctx, query, options)
+}
+
+// GetTrace retrieves a full trace by trace ID (JavaScript-friendly)
+func (c *QueryClient) GetTrace(traceID string) (*Trace, error) {
+	ctx := context.Background()
+	return c.getTrace(ctx, traceID)
+}
+
+// GetTraceWithHTTP retrieves a full trace by trace ID and returns HTTP response info (JavaScript-friendly)
+func (c *QueryClient) GetTraceWithHTTP(traceID string) (*Trace, *http.Response, error) {
+	ctx := context.Background()
+	return c.getTraceWithHTTP(ctx, traceID)
 }
 
 // parseTime parses a time string (relative like "1h" or absolute timestamp)

@@ -24,9 +24,9 @@ data:
       },
     };
 
-    const client = new tempo.Client({
-      endpoint: __ENV.TEMPO_ENDPOINT || 'http://tempo-distributor:4318',
-      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
+    const client = tempo.IngestClient({
+      endpoint: __ENV.TEMPO_ENDPOINT || 'tempo-simplest:4317',
+      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-grpc',
       tenant: __ENV.TEMPO_TENANT || '',
       timeout: 30,
     });
@@ -70,9 +70,8 @@ data:
       },
     };
 
-    const client = new tempo.Client({
+    const client = tempo.QueryClient({
       endpoint: __ENV.TEMPO_ENDPOINT || 'http://tempo-query-frontend:3200',
-      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
       tenant: __ENV.TEMPO_TENANT || '',
       timeout: 30,
     });
@@ -135,16 +134,15 @@ data:
       },
     };
 
-    const ingestionClient = new tempo.Client({
+    const ingestionClient = tempo.IngestClient({
       endpoint: __ENV.TEMPO_ENDPOINT || 'http://tempo-distributor:4318',
       protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
       tenant: __ENV.TEMPO_TENANT || '',
       timeout: 30,
     });
 
-    const queryClient = new tempo.Client({
+    const queryClient = tempo.QueryClient({
       endpoint: __ENV.TEMPO_QUERY_ENDPOINT || __ENV.TEMPO_ENDPOINT || 'http://tempo-query-frontend:3200',
-      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
       tenant: __ENV.TEMPO_TENANT || '',
       timeout: 30,
     });

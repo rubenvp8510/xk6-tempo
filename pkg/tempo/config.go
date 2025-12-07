@@ -2,16 +2,12 @@ package tempo
 
 import "time"
 
-// Config represents the configuration for the Tempo client
-type Config struct {
+// IngestConfig represents the configuration for the Tempo ingestion client
+type IngestConfig struct {
 	Endpoint string `js:"endpoint"`
 	Protocol string `js:"protocol"` // "otlp-http" or "otlp-grpc"
 	Tenant   string `js:"tenant"`
 	Timeout  int    `js:"timeout"` // seconds, default 30
-
-	// Authentication
-	BearerToken     string `js:"bearerToken"`     // Direct bearer token string (optional override)
-	BearerTokenFile string `js:"bearerTokenFile"` // Path to bearer token file (optional override)
 
 	// Test context for metric tagging
 	TestName   string  `js:"testName"`   // Test name for metric tags
@@ -19,11 +15,30 @@ type Config struct {
 	TargetMBps float64 `js:"targetMBps"` // Target MB/s for metric tags
 }
 
-// DefaultConfig returns a config with sensible defaults
-func DefaultConfig() Config {
-	return Config{
+// DefaultIngestConfig returns a config with sensible defaults
+func DefaultIngestConfig() IngestConfig {
+	return IngestConfig{
 		Endpoint: "http://localhost:4318",
 		Protocol: "otlp-http",
+		Timeout:  30,
+	}
+}
+
+// QueryConfig represents the configuration for the Tempo query client
+type QueryConfig struct {
+	Endpoint string `js:"endpoint"`
+	Tenant   string `js:"tenant"`
+	Timeout  int    `js:"timeout"` // seconds, default 30
+
+	// Authentication
+	BearerToken     string `js:"bearerToken"`     // Direct bearer token string (optional override)
+	BearerTokenFile string `js:"bearerTokenFile"` // Path to bearer token file (optional override)
+}
+
+// DefaultQueryConfig returns a config with sensible defaults
+func DefaultQueryConfig() QueryConfig {
+	return QueryConfig{
+		Endpoint: "http://localhost:3200",
 		Timeout:  30,
 	}
 }

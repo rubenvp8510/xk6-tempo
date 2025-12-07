@@ -10,9 +10,119 @@ import (
 	"sync"
 	"time"
 
-	"go.k6.io/k6/lib"
 	"golang.org/x/time/rate"
 )
+
+// CreateQueryWorkload creates a query workload manager  
+func CreateQueryWorkload(queryClient *QueryClient, vu VU, workloadConfig map[string]interface{}, queries map[string]interface{}) (*QueryWorkload, error) {
+	// Parse workload config
+	cfg := DefaultQueryWorkloadConfig()
+	if targetQPS, ok := workloadConfig["targetQPS"].(float64); ok {
+		cfg.TargetQPS = targetQPS
+	}
+	if burstMult, ok := workloadConfig["burstMultiplier"].(float64); ok {
+		cfg.BurstMultiplier = burstMult
+	}
+	if qpsMult, ok := workloadConfig["qpsMultiplier"].(float64); ok {
+		cfg.QPSMultiplier = qpsMult
+	}
+	if enableBackoff, ok := workloadConfig["enableBackoff"].(bool); ok {
+		cfg.EnableBackoff = enableBackoff
+	}
+	if minBackoff, ok := workloadConfig["minBackoffMs"].(int); ok {
+		cfg.MinBackoffMs = minBackoff
+	}
+	if maxBackoff, ok := workloadConfig["maxBackoffMs"].(int); ok {
+		cfg.MaxBackoffMs = maxBackoff
+	}
+	if backoffJitter, ok := workloadConfig["backoffJitter"].(bool); ok {
+		cfg.BackoffJitter = backoffJitter
+	}
+	if traceFetchProb, ok := workloadConfig["traceFetchProbability"].(float64); ok {
+		cfg.TraceFetchProbability = traceFetchProb
+	}
+	if timeWindowJitter, ok := workloadConfig["timeWindowJitterMs"].(int); ok {
+		cfg.TimeWindowJitterMs = timeWindowJitter
+	}
+
+	// Parse time buckets
+	if timeBuckets, ok := workloadConfig["timeBuckets"].([]interface{}); ok {
+		cfg.TimeBuckets = make([]TimeBucketConfig, 0, len(timeBuckets))
+		for _, tb := range timeBuckets {
+			if tbMap, ok := tb.(map[string]interface{}); ok {
+				bucket := TimeBucketConfig{
+					Weight: 1.0,
+				}
+				if name, ok := tbMap["name"].(string); ok {
+					bucket.Name = name
+				}
+				if ageStart, ok := tbMap["ageStart"].(string); ok {
+					bucket.AgeStart = ageStart
+				}
+				if ageEnd, ok := tbMap["ageEnd"].(string); ok {
+					bucket.AgeEnd = ageEnd
+				}
+				if weight, ok := tbMap["weight"].(float64); ok {
+					bucket.Weight = weight
+				}
+				cfg.TimeBuckets = append(cfg.TimeBuckets, bucket)
+			}
+		}
+	}
+
+	// Parse execution plan
+	if executionPlan, ok := workloadConfig["executionPlan"].([]interface{}); ok {
+		cfg.ExecutionPlan = make([]PlanEntry, 0, len(executionPlan))
+		for _, ep := range executionPlan {
+			if epMap, ok := ep.(map[string]interface{}); ok {
+				entry := PlanEntry{
+					Weight: 1.0,
+				}
+				if queryName, ok := epMap["queryName"].(string); ok {
+					entry.QueryName = queryName
+				}
+				if bucketName, ok := epMap["bucketName"].(string); ok {
+					entry.BucketName = bucketName
+				}
+				if weight, ok := epMap["weight"].(float64); ok {
+					entry.Weight = weight
+				}
+				cfg.ExecutionPlan = append(cfg.ExecutionPlan, entry)
+			}
+		}
+	}
+
+	// Parse query definitions
+	queryDefs := make(map[string]QueryDefinition)
+	for name, q := range queries {
+		if qMap, ok := q.(map[string]interface{}); ok {
+			def := QueryDefinition{
+				Name:  name,
+				Limit: 20,
+			}
+			if query, ok := qMap["query"].(string); ok {
+				def.Query = query
+			}
+			if limit, ok := qMap["limit"].(int); ok {
+				def.Limit = limit
+			}
+			if options, ok := qMap["options"].(map[string]interface{}); ok {
+				def.Options = options
+			}
+			queryDefs[name] = def
+		}
+	}
+
+	// Create state wrapper
+	workloadState := &WorkloadState{
+		VU: vu,
+	}
+
+	// Create workload
+	workload := NewQueryWorkload(cfg, queryClient, workloadState, queryDefs)
+
+	return workload, nil
+}
 
 // QueryWorkload manages query execution with rate limiting, backoff, and execution plans
 type QueryWorkload struct {
@@ -28,9 +138,9 @@ type QueryWorkload struct {
 	planMutex       sync.Mutex
 }
 
-// WorkloadState holds k6 state for metrics in workload
+// WorkloadState holds k6 VU for metrics in workload
 type WorkloadState struct {
-	Metrics *lib.State
+	VU VU
 }
 
 // NewQueryWorkload creates a new query workload manager
@@ -59,8 +169,8 @@ func NewQueryWorkload(
 	}
 }
 
-// ExecuteNext executes the next query from the execution plan
-func (qw *QueryWorkload) ExecuteNext(ctx context.Context) (*SearchResponse, error) {
+// executeNext executes the next query from the execution plan (internal, requires context)
+func (qw *QueryWorkload) executeNext(ctx context.Context) (*SearchResponse, error) {
 	// Wait for rate limiter
 	if err := qw.rateLimiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limiter wait failed: %w", err)
@@ -118,7 +228,7 @@ func (qw *QueryWorkload) ExecuteNext(ctx context.Context) (*SearchResponse, erro
 
 	// Execute search with HTTP response info
 	searchStart := time.Now()
-	result, httpResp, err := qw.queryClient.SearchWithHTTP(ctx, queryDef.Query, options)
+	result, httpResp, err := qw.queryClient.searchWithHTTP(ctx, queryDef.Query, options)
 	searchDuration := time.Since(searchStart)
 	
 	// Record metrics
@@ -130,8 +240,10 @@ func (qw *QueryWorkload) ExecuteNext(ctx context.Context) (*SearchResponse, erro
 	if result != nil {
 		spans = len(result.Traces)
 	}
-	RecordQueryDetailed(qw.state.Metrics, searchDuration, spans, err == nil, planEntry.QueryName, statusCode)
-	RecordTimeBucketQuery(qw.state.Metrics, planEntry.BucketName, searchDuration)
+	if qw.state.VU.State() != nil {
+		RecordQueryDetailed(qw.state.VU.State(), searchDuration, spans, err == nil, planEntry.QueryName, statusCode)
+		RecordTimeBucketQuery(qw.state.VU.State(), planEntry.BucketName, searchDuration)
+	}
 	
 	// Handle HTTP response for backoff
 	oldBackoff := qw.backoffDuration
@@ -150,17 +262,17 @@ func (qw *QueryWorkload) ExecuteNext(ctx context.Context) (*SearchResponse, erro
 	}
 	
 	// Record backoff if it changed
-	if qw.config.EnableBackoff && qw.backoffDuration > oldBackoff {
-		RecordBackoff(qw.state.Metrics, qw.backoffDuration-oldBackoff)
+	if qw.config.EnableBackoff && qw.backoffDuration > oldBackoff && qw.state.VU.State() != nil {
+		RecordBackoff(qw.state.VU.State(), qw.backoffDuration-oldBackoff)
 	}
 
 	return result, err
 }
 
-// ExecuteSearchAndFetch executes a search and optionally fetches the full trace
-func (qw *QueryWorkload) ExecuteSearchAndFetch(ctx context.Context) error {
+// executeSearchAndFetch executes a search and optionally fetches the full trace (internal, requires context)
+func (qw *QueryWorkload) executeSearchAndFetch(ctx context.Context) error {
 	// Execute search
-	result, err := qw.ExecuteNext(ctx)
+	result, err := qw.executeNext(ctx)
 	if err != nil {
 		return err
 	}
@@ -173,7 +285,7 @@ func (qw *QueryWorkload) ExecuteSearchAndFetch(ctx context.Context) error {
 	if rand.Float64() < qw.config.TraceFetchProbability {
 		traceID := result.Traces[0].TraceID
 		fetchStart := time.Now()
-		_, httpResp, fetchErr := qw.queryClient.GetTraceWithHTTP(ctx, traceID)
+		_, httpResp, fetchErr := qw.queryClient.getTraceWithHTTP(ctx, traceID)
 		fetchDuration := time.Since(fetchStart)
 		
 		// Handle HTTP response for backoff
@@ -183,7 +295,7 @@ func (qw *QueryWorkload) ExecuteSearchAndFetch(ctx context.Context) error {
 		
 		// Record trace fetch metrics
 		metricsState := &MetricsState{
-			State: qw.state.Metrics,
+			State: qw.state.VU.State(),
 		}
 		if fetchErr != nil {
 			// Record fetch failure but don't fail the whole operation
@@ -262,7 +374,7 @@ func (qw *QueryWorkload) executeWithDefaultTimeRange(ctx context.Context, queryD
 	}
 
 	searchStart := time.Now()
-	result, httpResp, err := qw.queryClient.SearchWithHTTP(ctx, queryDef.Query, options)
+	result, httpResp, err := qw.queryClient.searchWithHTTP(ctx, queryDef.Query, options)
 	searchDuration := time.Since(searchStart)
 	
 	// Record metrics
@@ -274,7 +386,9 @@ func (qw *QueryWorkload) executeWithDefaultTimeRange(ctx context.Context, queryD
 	if result != nil {
 		spans = len(result.Traces)
 	}
-	RecordQueryDetailed(qw.state.Metrics, searchDuration, spans, err == nil, queryDef.Name, statusCode)
+	if qw.state.VU.State() != nil {
+		RecordQueryDetailed(qw.state.VU.State(), searchDuration, spans, err == nil, queryDef.Name, statusCode)
+	}
 	
 	if httpResp != nil {
 		qw.HandleHTTPResponse(httpResp)
@@ -365,6 +479,20 @@ func (qw *QueryWorkload) GetBackoffDuration() time.Duration {
 // SetQueries updates the query definitions
 func (qw *QueryWorkload) SetQueries(queries map[string]QueryDefinition) {
 	qw.queries = queries
+}
+
+// JavaScript-friendly wrapper methods (exported, no context parameter required)
+
+// ExecuteNext executes the next query from the execution plan (JavaScript-friendly)
+func (qw *QueryWorkload) ExecuteNext() (*SearchResponse, error) {
+	ctx := context.Background()
+	return qw.executeNext(ctx)
+}
+
+// ExecuteSearchAndFetch executes a search and optionally fetches the full trace (JavaScript-friendly)
+func (qw *QueryWorkload) ExecuteSearchAndFetch() error {
+	ctx := context.Background()
+	return qw.executeSearchAndFetch(ctx)
 }
 
 // CalculatePerWorkerQPS calculates QPS per worker given total concurrency
