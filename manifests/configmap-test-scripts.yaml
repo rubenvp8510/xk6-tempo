@@ -1,0 +1,193 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-tempo-test-scripts
+  labels:
+    app: k6-tempo
+data:
+  ingestion-test.js: |
+    import tempo from 'k6/x/tempo';
+
+    export const options = {
+      scenarios: {
+        ingestion: {
+          executor: 'constant-arrival-rate',
+          rate: 100,  // 100 iterations/sec
+          duration: '5m',
+          preAllocatedVUs: 10,
+          maxVUs: 50,
+        },
+      },
+      thresholds: {
+        'tempo_ingestion_rate_bytes_per_sec': ['rate>0'],
+        'tempo_ingestion_traces_total': ['count>0'],
+      },
+    };
+
+    const client = new tempo.Client({
+      endpoint: __ENV.TEMPO_ENDPOINT || 'http://tempo-distributor:4318',
+      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
+      tenant: __ENV.TEMPO_TENANT || '',
+      timeout: 30,
+    });
+
+    export default function() {
+      // Generate a batch targeting 10KB per iteration
+      // At 100 iterations/sec, this gives us ~1MB/s
+      const batch = tempo.generateBatch({
+        targetSizeBytes: 10240,  // 10KB
+        traceConfig: {
+          services: 3,
+          spansPerTrace: 15,
+          spanDepth: 3,
+          attributeCount: 5,
+          attributeValueSize: 32,
+        }
+      });
+      
+      const err = client.pushBatch(batch);
+      if (err) {
+        console.error('Failed to push batch:', err);
+      }
+    }
+  query-test.js: |
+    import tempo from 'k6/x/tempo';
+
+    export const options = {
+      scenarios: {
+        queries: {
+          executor: 'constant-arrival-rate',
+          rate: 50,  // 50 QPS
+          duration: '5m',
+          preAllocatedVUs: 20,
+          maxVUs: 100,
+        },
+      },
+      thresholds: {
+        'tempo_query_duration_seconds': ['p(95)<2'],
+        'tempo_query_requests_total': ['rate>0'],
+        'tempo_query_failures_total': ['rate<1'],
+      },
+    };
+
+    const client = new tempo.Client({
+      endpoint: __ENV.TEMPO_ENDPOINT || 'http://tempo-query-frontend:3200',
+      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
+      tenant: __ENV.TEMPO_TENANT || '',
+      timeout: 30,
+    });
+
+    const queries = [
+      '{service.name="frontend"}',
+      '{service.name="backend"}',
+      '{status=error}',
+      '{duration>100ms}',
+      '{service.name="frontend" && status=error}',
+    ];
+
+    export default function() {
+      const query = queries[Math.floor(Math.random() * queries.length)];
+      
+      const result = client.search(query, {
+        start: '1h',
+        end: 'now',
+        limit: 20,
+      });
+      
+      if (!result) {
+        console.error('Query failed');
+        return;
+      }
+      
+      // Optionally fetch full trace details for first result
+      if (result.traces && result.traces.length > 0 && Math.random() < 0.1) {
+        const traceId = result.traces[0].traceID;
+        const fullTrace = client.getTrace(traceId);
+        if (!fullTrace) {
+          console.error('Failed to fetch trace:', traceId);
+        }
+      }
+    }
+  combined-test.js: |
+    import tempo from 'k6/x/tempo';
+
+    export const options = {
+      scenarios: {
+        ingestion: {
+          executor: 'constant-arrival-rate',
+          rate: 50,  // 50 iterations/sec for ingestion
+          duration: '5m',
+          preAllocatedVUs: 5,
+          maxVUs: 20,
+        },
+        queries: {
+          executor: 'constant-arrival-rate',
+          rate: 25,  // 25 QPS for queries
+          duration: '5m',
+          preAllocatedVUs: 10,
+          maxVUs: 50,
+        },
+      },
+      thresholds: {
+        'tempo_ingestion_rate_bytes_per_sec': ['rate>0'],
+        'tempo_query_duration_seconds': ['p(95)<2'],
+        'tempo_query_failures_total': ['rate<1'],
+      },
+    };
+
+    const ingestionClient = new tempo.Client({
+      endpoint: __ENV.TEMPO_ENDPOINT || 'http://tempo-distributor:4318',
+      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
+      tenant: __ENV.TEMPO_TENANT || '',
+      timeout: 30,
+    });
+
+    const queryClient = new tempo.Client({
+      endpoint: __ENV.TEMPO_QUERY_ENDPOINT || __ENV.TEMPO_ENDPOINT || 'http://tempo-query-frontend:3200',
+      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-http',
+      tenant: __ENV.TEMPO_TENANT || '',
+      timeout: 30,
+    });
+
+    const queries = [
+      '{service.name="frontend"}',
+      '{service.name="backend"}',
+      '{status=error}',
+    ];
+
+    export default function() {
+      // Determine which scenario this VU is running
+      const scenario = __ENV.__SCENARIO || 'ingestion';
+      
+      if (scenario === 'ingestion') {
+        // Ingestion workload
+        const batch = tempo.generateBatch({
+          targetSizeBytes: 10240,  // 10KB per batch
+          traceConfig: {
+            services: 3,
+            spansPerTrace: 15,
+            spanDepth: 3,
+            attributeCount: 5,
+            attributeValueSize: 32,
+          }
+        });
+        
+        const err = ingestionClient.pushBatch(batch);
+        if (err) {
+          console.error('Failed to push batch:', err);
+        }
+      } else {
+        // Query workload
+        const query = queries[Math.floor(Math.random() * queries.length)];
+        const result = queryClient.search(query, {
+          start: '1h',
+          end: 'now',
+          limit: 20,
+        });
+        
+        if (!result) {
+          console.error('Query failed');
+        }
+      }
+    }
+

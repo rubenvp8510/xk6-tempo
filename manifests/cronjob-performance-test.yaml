@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k6-tempo-performance-test
+  labels:
+    app: k6-tempo
+    test-type: performance
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid  # Don't run new job if previous is still running
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 3600
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app: k6-tempo
+            test-type: performance
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: k6
+            image: image-registry.openshift-image-registry.svc:5000/YOUR_PROJECT/xk6-tempo:latest
+            imagePullPolicy: Always
+            command: ["k6", "run", "/scripts/ingestion-test.js"]
+            env:
+            - name: TEMPO_ENDPOINT
+              value: "http://tempo-distributor.tempo.svc.cluster.local:4318"
+            - name: TEMPO_PROTOCOL
+              value: "otlp-http"
+            - name: TEMPO_TENANT
+              value: ""  # Set if using multi-tenancy
+            volumeMounts:
+            - name: test-scripts
+              mountPath: /scripts
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "512Mi"
+              limits:
+                cpu: "2000m"
+                memory: "2Gi"
+          volumes:
+          - name: test-scripts
+            configMap:
+              name: k6-tempo-test-scripts
+

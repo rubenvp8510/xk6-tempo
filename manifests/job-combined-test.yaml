@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-tempo-combined-test
+  labels:
+    app: k6-tempo
+    test-type: combined
+spec:
+  ttlSecondsAfterFinished: 3600  # Clean up after 1 hour
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: k6-tempo
+        test-type: combined
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: k6
+        image: image-registry.openshift-image-registry.svc:5000/YOUR_PROJECT/xk6-tempo:latest
+        imagePullPolicy: Always
+        command: ["k6", "run", "/scripts/combined-test.js"]
+        env:
+        - name: TEMPO_ENDPOINT
+          value: "http://tempo-distributor.tempo.svc.cluster.local:4318"
+        - name: TEMPO_QUERY_ENDPOINT
+          value: "http://tempo-query-frontend.tempo.svc.cluster.local:3200"
+        - name: TEMPO_PROTOCOL
+          value: "otlp-http"
+        - name: TEMPO_TENANT
+          value: ""  # Set if using multi-tenancy
+        volumeMounts:
+        - name: test-scripts
+          mountPath: /scripts
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "1Gi"
+          limits:
+            cpu: "4000m"
+            memory: "4Gi"
+      volumes:
+      - name: test-scripts
+        configMap:
+          name: k6-tempo-test-scripts
+

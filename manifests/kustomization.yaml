@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmap-test-scripts.yaml
+  - job-ingestion-test.yaml
+  - job-query-test.yaml
+  - job-combined-test.yaml
+  - cronjob-performance-test.yaml
+
+commonLabels:
+  app: k6-tempo
+
+# Optional: Add namespace
+# namespace: tempo-performance-tests
+
+# Optional: Add image transformations
+# images:
+#   - name: image-registry.openshift-image-registry.svc:5000/YOUR_PROJECT/xk6-tempo
+#     newName: your-registry.com/xk6-tempo
+#     newTag: v1.0.0
+
