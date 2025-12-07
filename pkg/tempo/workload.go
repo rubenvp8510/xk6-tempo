@@ -98,11 +98,12 @@ func (qw *QueryWorkload) ExecuteNext(ctx context.Context) (*SearchResponse, erro
 		return qw.executeWithDefaultTimeRange(ctx, &queryDef)
 	}
 
-	// Apply jitter to time window if configured
+	// Apply bidirectional jitter to shift the entire time window (defeat caching)
 	if qw.config.TimeWindowJitterMs > 0 {
-		jitter := time.Duration(rand.Intn(qw.config.TimeWindowJitterMs)) * time.Millisecond
-		start = start.Add(-jitter)
-		end = end.Add(jitter)
+		// Random offset between -jitterMs and +jitterMs
+		offset := time.Duration((rand.Float64()*2-1)*float64(qw.config.TimeWindowJitterMs)) * time.Millisecond
+		start = start.Add(offset)
+		end = end.Add(offset)
 	}
 
 	// Build query options
