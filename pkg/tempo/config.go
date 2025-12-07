@@ -9,6 +9,10 @@ type Config struct {
 	Tenant   string `js:"tenant"`
 	Timeout  int    `js:"timeout"` // seconds, default 30
 
+	// Authentication
+	BearerToken     string `js:"bearerToken"`     // Direct bearer token string (optional override)
+	BearerTokenFile string `js:"bearerTokenFile"` // Path to bearer token file (optional override)
+
 	// Test context for metric tagging
 	TestName   string  `js:"testName"`   // Test name for metric tags
 	TargetQPS  int     `js:"targetQPS"`  // Target QPS for metric tags

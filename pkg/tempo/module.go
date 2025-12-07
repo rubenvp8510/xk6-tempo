@@ -63,6 +63,12 @@ func (mi *ModuleInstance) newClient(config map[string]interface{}) (*Client, err
 	if timeout, ok := config["timeout"].(int); ok && timeout > 0 {
 		cfg.Timeout = timeout
 	}
+	if bearerToken, ok := config["bearerToken"].(string); ok {
+		cfg.BearerToken = bearerToken
+	}
+	if bearerTokenFile, ok := config["bearerTokenFile"].(string); ok {
+		cfg.BearerTokenFile = bearerTokenFile
+	}
 	if testName, ok := config["testName"].(string); ok {
 		cfg.TestName = testName
 	}

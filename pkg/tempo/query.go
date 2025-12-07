@@ -74,13 +74,14 @@ type Span struct {
 
 // QueryClient handles queries to Tempo's search API
 type QueryClient struct {
-	client  *http.Client
-	baseURL string
-	tenant  string
+	client      *http.Client
+	baseURL     string
+	tenant      string
+	bearerToken string
 }
 
 // NewQueryClient creates a new query client
-func NewQueryClient(baseURL string, tenant string, timeout time.Duration) *QueryClient {
+func NewQueryClient(baseURL string, tenant string, bearerToken string, timeout time.Duration) *QueryClient {
 	// Ensure baseURL doesn't end with /
 	if len(baseURL) > 0 && baseURL[len(baseURL)-1] == '/' {
 		baseURL = baseURL[:len(baseURL)-1]
@@ -90,8 +91,9 @@ func NewQueryClient(baseURL string, tenant string, timeout time.Duration) *Query
 		client: &http.Client{
 			Timeout: timeout,
 		},
-		baseURL: baseURL,
-		tenant:  tenant,
+		baseURL:     baseURL,
+		tenant:      tenant,
+		bearerToken: bearerToken,
 	}
 }
 
@@ -151,6 +153,11 @@ func (c *QueryClient) SearchWithHTTP(ctx context.Context, query string, options 
 		req.Header.Set("X-Scope-OrgID", c.tenant)
 	}
 
+	// Set bearer token if configured
+	if c.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
+	}
+
 	// Send request
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -195,6 +202,11 @@ func (c *QueryClient) GetTraceWithHTTP(ctx context.Context, traceID string) (*Tr
 	// Set tenant header if configured
 	if c.tenant != "" {
 		req.Header.Set("X-Scope-OrgID", c.tenant)
+	}
+
+	// Set bearer token if configured
+	if c.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.bearerToken)
 	}
 
 	// Send request

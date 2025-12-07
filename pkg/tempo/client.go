@@ -49,8 +49,14 @@ func NewClient(state *lib.State, config Config) (*Client, error) {
 		return nil, fmt.Errorf("unsupported protocol: %s (use 'otlp-http' or 'otlp-grpc')", config.Protocol)
 	}
 
+	// Resolve bearer token for query client
+	bearerToken, err := ResolveBearerToken(config.BearerToken, config.BearerTokenFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve bearer token: %w", err)
+	}
+
 	// Create query client (use same endpoint, but for query API)
-	queryClient := NewQueryClient(config.Endpoint, config.Tenant, timeout)
+	queryClient := NewQueryClient(config.Endpoint, config.Tenant, bearerToken, timeout)
 
 	// Extract test context from config if available
 	var testCtx *TestContext
