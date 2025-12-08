@@ -25,9 +25,9 @@ data:
     };
 
     const client = tempo.IngestClient({
-      endpoint: __ENV.TEMPO_ENDPOINT || 'tempo-simplest:4317',
-      protocol: __ENV.TEMPO_PROTOCOL || 'otlp-grpc',
-      tenant: __ENV.TEMPO_TENANT || '',
+      endpoint: 'otel-collector-collector:4317',
+      protocol: 'otlp-grpc',
+      tenant:  'tenant-1',
       timeout: 30,
     });
 
@@ -42,6 +42,24 @@ data:
           spanDepth: 3,
           attributeCount: 5,
           attributeValueSize: 32,
+          useSemanticAttributes: true,
+          useWorkflows: true,
+          workflowWeights: {
+            'place_order': 0.3,
+            'user_login': 0.2,
+            'browse_products': 0.2,
+            'search_products': 0.15,
+            'view_dashboard': 0.1,
+            'process_refund': 0.05
+          },
+          businessAttributesDensity: 0.8,
+          enableTags: true,
+          tagDensity: 0.9,
+          cardinalityConfig: {
+            'customer_id': 5000,
+            'tenant_id': 50,
+            'region': 5
+          }
         }
       });
       
@@ -87,7 +105,7 @@ data:
     export default function() {
       const query = queries[Math.floor(Math.random() * queries.length)];
       
-      const result = client.search(query, {
+      const result = client.Search(query, {
         start: '1h',
         end: 'now',
         limit: 20,
@@ -101,7 +119,7 @@ data:
       // Optionally fetch full trace details for first result
       if (result.traces && result.traces.length > 0 && Math.random() < 0.1) {
         const traceId = result.traces[0].traceID;
-        const fullTrace = client.getTrace(traceId);
+        const fullTrace = client.GetTrace(traceId);
         if (!fullTrace) {
           console.error('Failed to fetch trace:', traceId);
         }
@@ -167,17 +185,30 @@ data:
             spanDepth: 3,
             attributeCount: 5,
             attributeValueSize: 32,
+            useSemanticAttributes: true,
+            useWorkflows: true,
+            workflowWeights: {
+              'place_order': 0.3,
+              'user_login': 0.2,
+              'browse_products': 0.2,
+              'search_products': 0.15,
+              'view_dashboard': 0.1,
+              'process_refund': 0.05
+            },
+            businessAttributesDensity: 0.8,
+            enableTags: true,
+            tagDensity: 0.9,
           }
         });
         
-        const err = ingestionClient.pushBatch(batch);
+        const err = ingestionClient.PushBatch(batch);
         if (err) {
           console.error('Failed to push batch:', err);
         }
       } else {
         // Query workload
         const query = queries[Math.floor(Math.random() * queries.length)];
-        const result = queryClient.search(query, {
+        const result = queryClient.Search(query, {
           start: '1h',
           end: 'now',
           limit: 20,

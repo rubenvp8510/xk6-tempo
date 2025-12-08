@@ -2,6 +2,7 @@ package generator
 
 import (
 	cryptoRand "crypto/rand"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -21,6 +22,12 @@ type spanInfo struct {
 
 // GenerateTrace generates a single trace based on the configuration
 func GenerateTrace(config Config) ptrace.Traces {
+	// Initialize cardinality manager with config
+	cm := GetCardinalityManager()
+	if len(config.CardinalityConfig) > 0 {
+		cm.SetConfig(config.CardinalityConfig)
+	}
+	
 	traces := ptrace.NewTraces()
 	resourceSpans := traces.ResourceSpans().AppendEmpty()
 	
@@ -45,9 +52,28 @@ func GenerateTrace(config Config) ptrace.Traces {
 	traceID := make([]byte, 16)
 	cryptoRand.Read(traceID)
 	
+	// Generate tag context (consistent across all spans in trace)
+	tagCtx := GenerateTagContext(config, rng)
+	
+	// Generate workflow context if workflows are enabled
+	var workflowCtx *WorkflowContext
+	var workflowName string
+	if config.UseWorkflows {
+		workflowName = SelectWorkflow(config.WorkflowWeights, rng)
+		workflowCtx = GenerateWorkflowContext(workflowName, rng)
+	}
+	
 	// Generate spans
 	scopeSpans := resourceSpans.ScopeSpans().AppendEmpty()
 	spans := scopeSpans.Spans()
+	
+	// Use workflow-based generation if enabled, otherwise use tree-based
+	if config.UseWorkflows && workflowCtx != nil {
+		fmt.Printf("[DEBUG] Using workflow-based generation: %s\n", workflowName)
+		return generateWorkflowTrace(traces, traceID, config, rng, workflowCtx, tagCtx, workflowName)
+	} else {
+		fmt.Printf("[DEBUG] Using tree-based generation (UseWorkflows=%v, workflowCtx=%v)\n", config.UseWorkflows, workflowCtx != nil)
+	}
 	
 	// Build span tree with variable fan-out
 	spansMap := make(map[int]*spanInfo)
@@ -57,7 +83,7 @@ func GenerateTrace(config Config) ptrace.Traces {
 	traceStartTime := time.Now().Add(-time.Duration(rng.Intn(3600)) * time.Second)
 	
 	// Generate root span
-	rootSpan := buildSpan(
+	rootSpan := buildSpanWithContext(
 		traceID,
 		nil, // no parent
 		0,
@@ -66,6 +92,9 @@ func GenerateTrace(config Config) ptrace.Traces {
 		config,
 		traceStartTime,
 		rng,
+		workflowCtx,
+		tagCtx,
+		"",
 	)
 	
 	spansMap[0] = &spanInfo{
@@ -129,7 +158,7 @@ func GenerateTrace(config Config) ptrace.Traces {
 		// Rotate service for variety
 		serviceIndex = (serviceIndex + 1) % config.Services
 		
-		childSpan := buildSpan(
+		childSpan := buildSpanWithContext(
 			traceID,
 			parentSpan.SpanId,
 			spansGenerated,
@@ -138,6 +167,9 @@ func GenerateTrace(config Config) ptrace.Traces {
 			childConfig,
 			childStartTime,
 			rng,
+			workflowCtx,
+			tagCtx,
+			"",
 		)
 		
 		// Ensure child ends before parent
@@ -373,27 +405,242 @@ func estimateTraceSize(trace ptrace.Traces) int {
 	if trace.ResourceSpans().Len() == 0 {
 		return 0
 	}
-	resourceSpans := trace.ResourceSpans().At(0)
-	if resourceSpans.ScopeSpans().Len() == 0 {
-		return 0
-	}
-	scopeSpans := resourceSpans.ScopeSpans().At(0)
-	spans := scopeSpans.Spans()
-	for i := 0; i < spans.Len(); i++ {
-		span := spans.At(i)
-		// Rough estimate: count attributes, events, and basic span data
-		size += 100 // Base span overhead
-		attrs := span.Attributes()
-		attrs.Range(func(key string, value pcommon.Value) bool {
+	
+	// Iterate over all ResourceSpans (one per service in workflow mode)
+	for rsIdx := 0; rsIdx < trace.ResourceSpans().Len(); rsIdx++ {
+		resourceSpans := trace.ResourceSpans().At(rsIdx)
+		
+		// Add resource overhead
+		size += 50
+		resourceSpans.Resource().Attributes().Range(func(key string, value pcommon.Value) bool {
 			size += len(key) + len(value.AsString())
 			return true
 		})
-		events := span.Events()
-		for j := 0; j < events.Len(); j++ {
-			event := events.At(j)
-			size += len(event.Name()) + 50
+		
+		for ssIdx := 0; ssIdx < resourceSpans.ScopeSpans().Len(); ssIdx++ {
+			scopeSpans := resourceSpans.ScopeSpans().At(ssIdx)
+			spans := scopeSpans.Spans()
+			
+			for i := 0; i < spans.Len(); i++ {
+				span := spans.At(i)
+				// Rough estimate: count attributes, events, and basic span data
+				size += 100 // Base span overhead
+				attrs := span.Attributes()
+				attrs.Range(func(key string, value pcommon.Value) bool {
+					size += len(key) + len(value.AsString())
+					return true
+				})
+				events := span.Events()
+				for j := 0; j < events.Len(); j++ {
+					event := events.At(j)
+					size += len(event.Name()) + 50
+				}
+			}
 		}
 	}
 	return size
+}
+
+// spanWithService holds span info along with its service name for grouping
+type spanWithService struct {
+	span        *tracev1.Span
+	serviceName string
+}
+
+// generateWorkflowTrace generates a trace following a workflow's service call chain
+// Each service gets its own ResourceSpans with proper service.name resource attribute
+func generateWorkflowTrace(
+	_ ptrace.Traces, // Ignored - we create a fresh traces object
+	traceID []byte,
+	config Config,
+	rng *rand.Rand,
+	workflowCtx *WorkflowContext,
+	tagCtx *TagContext,
+	workflowName string,
+) ptrace.Traces {
+	// Create a fresh traces object for workflow-based generation
+	traces := ptrace.NewTraces()
+	
+	// Get workflow steps
+	steps := GetWorkflowSteps(workflowName)
+	if len(steps) == 0 {
+		// Fallback: return empty traces
+		return traces
+	}
+	
+	// Trace start time
+	traceStartTime := time.Now().Add(-time.Duration(rng.Intn(3600)) * time.Second)
+	
+	// Build spans following workflow steps, tracking service for each span
+	spansMap := make(map[int]*spanInfo)
+	spanServices := make(map[int]string) // Track which service each span belongs to
+	spanIndex := 0
+	
+	// Generate root span (first step)
+	rootStep := steps[0]
+	rootConfig := config
+	rootConfig.DurationBaseMs = rootStep.DurationMs
+	if rootConfig.DurationBaseMs <= 0 {
+		rootConfig.DurationBaseMs = 50
+	}
+	
+	rootSpan := buildSpanWithContext(
+		traceID,
+		nil,
+		0,
+		0,
+		rootStep.Service,
+		rootConfig,
+		traceStartTime,
+		rng,
+		workflowCtx,
+		tagCtx,
+		rootStep.Operation,
+	)
+	
+	// Set span kind based on workflow step
+	if rootStep.SpanKind == "client" {
+		rootSpan.Kind = tracev1.Span_SPAN_KIND_CLIENT
+	} else if rootStep.SpanKind == "internal" {
+		rootSpan.Kind = tracev1.Span_SPAN_KIND_INTERNAL
+	} else {
+		rootSpan.Kind = tracev1.Span_SPAN_KIND_SERVER
+	}
+	
+	spansMap[0] = &spanInfo{
+		span:        rootSpan,
+		index:       0,
+		depth:       0,
+		children:    make([]int, 0),
+		maxChildren: len(steps) - 1,
+	}
+	spanServices[0] = rootStep.Service
+	spanIndex++
+	
+	// Generate child spans following workflow steps
+	parentStack := []int{0}
+	
+	for i := 1; i < len(steps) && spanIndex < config.SpansPerTrace; i++ {
+		step := steps[i]
+		
+		// Select parent from stack
+		parentIdx := parentStack[len(parentStack)-1]
+		if len(parentStack) > 1 && rng.Float64() < 0.3 {
+			parentIdx = parentStack[rng.Intn(len(parentStack))]
+		}
+		
+		parentInfo := spansMap[parentIdx]
+		if parentInfo == nil {
+			break
+		}
+		
+		// Calculate timing
+		parentSpan := parentInfo.span
+		parentStart := time.Unix(0, int64(parentSpan.StartTimeUnixNano))
+		parentEnd := time.Unix(0, int64(parentSpan.EndTimeUnixNano))
+		parentDuration := parentEnd.Sub(parentStart)
+		
+		delay := time.Duration(rng.Float64() * 0.3 * float64(parentDuration))
+		childStartTime := parentStart.Add(delay)
+		
+		maxChildDuration := parentEnd.Sub(childStartTime) - time.Millisecond*10
+		if maxChildDuration < time.Millisecond {
+			maxChildDuration = time.Millisecond
+		}
+		
+		stepDuration := time.Duration(step.DurationMs) * time.Millisecond
+		if stepDuration > maxChildDuration {
+			stepDuration = maxChildDuration
+		}
+		
+		childConfig := config
+		childConfig.DurationBaseMs = int(stepDuration.Milliseconds())
+		if childConfig.DurationBaseMs < 1 {
+			childConfig.DurationBaseMs = 1
+		}
+		
+		childSpan := buildSpanWithContext(
+			traceID,
+			parentSpan.SpanId,
+			spanIndex,
+			parentInfo.depth+1,
+			step.Service,
+			childConfig,
+			childStartTime,
+			rng,
+			workflowCtx,
+			tagCtx,
+			step.Operation,
+		)
+		
+		// Set span kind based on workflow step
+		if step.SpanKind == "client" {
+			childSpan.Kind = tracev1.Span_SPAN_KIND_CLIENT
+		} else if step.SpanKind == "internal" {
+			childSpan.Kind = tracev1.Span_SPAN_KIND_INTERNAL
+		} else {
+			childSpan.Kind = tracev1.Span_SPAN_KIND_SERVER
+		}
+		
+		// Ensure child ends before parent
+		childEnd := time.Unix(0, int64(childSpan.EndTimeUnixNano))
+		if childEnd.After(parentEnd) {
+			childSpan.EndTimeUnixNano = parentSpan.EndTimeUnixNano - uint64(time.Millisecond.Nanoseconds())
+		}
+		
+		childInfo := &spanInfo{
+			span:        childSpan,
+			index:       spanIndex,
+			depth:       parentInfo.depth + 1,
+			children:    make([]int, 0),
+			maxChildren: 5,
+		}
+		
+		spansMap[spanIndex] = childInfo
+		spanServices[spanIndex] = step.Service
+		parentInfo.children = append(parentInfo.children, spanIndex)
+		
+		if step.CanParallel {
+			parentStack = append(parentStack, spanIndex)
+		} else {
+			if len(parentStack) > 0 {
+				parentStack[len(parentStack)-1] = spanIndex
+			}
+		}
+		
+		spanIndex++
+	}
+	
+	// Group spans by service
+	serviceSpans := make(map[string][]*tracev1.Span)
+	for idx, info := range spansMap {
+		serviceName := spanServices[idx]
+		if serviceSpans[serviceName] == nil {
+			serviceSpans[serviceName] = make([]*tracev1.Span, 0)
+		}
+		serviceSpans[serviceName] = append(serviceSpans[serviceName], info.span)
+	}
+	
+	// Create ResourceSpans for each service
+	for serviceName, spans := range serviceSpans {
+		rs := traces.ResourceSpans().AppendEmpty()
+		resource := rs.Resource()
+		
+		// Set resource attributes for this service
+		resourceAttrs := generateResourceAttributes(serviceName, rng)
+		resourceAttrs["service.name"] = serviceName
+		for key, value := range resourceAttrs {
+			resource.Attributes().PutStr(key, value)
+		}
+		
+		// Add spans to this service's scope
+		scopeSpans := rs.ScopeSpans().AppendEmpty()
+		for _, protoSpan := range spans {
+			span := scopeSpans.Spans().AppendEmpty()
+			spanProtoToPtrace(protoSpan, span)
+		}
+	}
+	
+	return traces
 }
 

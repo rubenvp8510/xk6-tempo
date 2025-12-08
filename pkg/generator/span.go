@@ -133,10 +133,35 @@ func buildSpan(
 	startTime time.Time,
 	rng *rand.Rand,
 ) *tracev1.Span {
+	return buildSpanWithContext(traceID, parentSpanID, spanIndex, depth, serviceName, config, startTime, rng, nil, nil, "")
+}
+
+// buildSpanWithContext creates a span with workflow context and tag context
+func buildSpanWithContext(
+	traceID []byte,
+	parentSpanID []byte,
+	spanIndex int,
+	depth int,
+	serviceName string,
+	config Config,
+	startTime time.Time,
+	rng *rand.Rand,
+	workflowCtx *WorkflowContext,
+	tagCtx *TagContext,
+	operationName string,
+) *tracev1.Span {
 	spanID := generateSpanID()
 
 	// Generate realistic operation name
-	spanName := generateOperationName(serviceName, rng)
+	var spanName string
+	if operationName != "" {
+		spanName = operationName
+	} else if workflowCtx != nil {
+		// Use workflow operation name if available
+		spanName = generateOperationName(serviceName, rng)
+	} else {
+		spanName = generateOperationName(serviceName, rng)
+	}
 
 	// Calculate duration with variance
 	duration := calculateDuration(config, rng)
@@ -185,6 +210,18 @@ func buildSpan(
 	if config.UseSemanticAttributes {
 		semanticAttrs := generateSemanticAttributes(kind, serviceName, rng)
 		attrs = append(attrs, semanticAttrs...)
+	}
+
+	// Add business attributes if workflow context is provided
+	if workflowCtx != nil {
+		businessAttrs := generateBusinessAttributes(workflowCtx, serviceName, config, rng)
+		attrs = append(attrs, businessAttrs...)
+	}
+
+	// Add tags if enabled
+	if tagCtx != nil {
+		tags := GenerateTags(tagCtx, config, rng)
+		attrs = append(attrs, tags...)
 	}
 
 	// Generate custom attributes

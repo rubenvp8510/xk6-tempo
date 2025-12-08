@@ -17,6 +17,7 @@ type IngestClient struct {
 	vu          VU
 	config      IngestConfig
 	testContext *TestContext
+	metrics     *tempoMetrics
 }
 
 // VU is an interface for k6 VU to avoid import cycles
@@ -31,7 +32,7 @@ type otlpExporter interface {
 }
 
 // NewIngestClient creates a new Tempo ingestion client
-func NewIngestClient(vu VU, config IngestConfig) (*IngestClient, error) {
+func NewIngestClient(vu VU, config IngestConfig, m *tempoMetrics) (*IngestClient, error) {
 	timeout := time.Duration(config.Timeout) * time.Second
 	if timeout == 0 {
 		timeout = 30 * time.Second
@@ -67,6 +68,7 @@ func NewIngestClient(vu VU, config IngestConfig) (*IngestClient, error) {
 		vu:          vu,
 		config:      config,
 		testContext: testCtx,
+		metrics:     m,
 	}, nil
 }
 
@@ -82,7 +84,7 @@ func (c *IngestClient) push(ctx context.Context, trace ptrace.Traces) error {
 
 	// Record metrics
 	if err == nil && c.vu.State() != nil {
-		RecordIngestionWithContext(c.vu.State(), c.testContext, int64(size), 1, duration)
+		RecordIngestionWithContext(c.vu.State(), c.metrics, c.testContext, int64(size), 1, duration)
 	}
 
 	return err
@@ -115,7 +117,7 @@ func (c *IngestClient) pushBatchWithRateLimitInternal(ctx context.Context, trace
 
 	// Record metrics
 	if err == nil && c.vu.State() != nil {
-		RecordIngestionWithContext(c.vu.State(), c.testContext, int64(totalSize), len(traces), duration)
+		RecordIngestionWithContext(c.vu.State(), c.metrics, c.testContext, int64(totalSize), len(traces), duration)
 	}
 
 	return err

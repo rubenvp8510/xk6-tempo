@@ -8,101 +8,6 @@ import (
 	"go.k6.io/k6/metrics"
 )
 
-var (
-	// Ingestion metrics
-	IngestionBytesTotal = metrics.NewRegistry().MustNewMetric(
-		"tempo_ingestion_bytes_total",
-		metrics.Counter,
-		metrics.Data,
-	)
-	
-	IngestionRateBytesPerSec = metrics.NewRegistry().MustNewMetric(
-		"tempo_ingestion_rate_bytes_per_sec",
-		metrics.Gauge,
-		metrics.Data,
-	)
-	
-	IngestionTracesTotal = metrics.NewRegistry().MustNewMetric(
-		"tempo_ingestion_traces_total",
-		metrics.Counter,
-		metrics.Default,
-	)
-	
-	IngestionDuration = metrics.NewRegistry().MustNewMetric(
-		"tempo_ingestion_duration_seconds",
-		metrics.Trend,
-		metrics.Time,
-	)
-	
-	// Query metrics
-	QueryDuration = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_duration_seconds",
-		metrics.Trend,
-		metrics.Time,
-	)
-	
-	QueryRequestsTotal = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_requests_total",
-		metrics.Counter,
-		metrics.Default,
-	)
-	
-	QueryFailuresTotal = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_failures_total",
-		metrics.Counter,
-		metrics.Default,
-	)
-	
-	QuerySpansReturned = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_spans_returned",
-		metrics.Trend,
-		metrics.Default,
-	)
-	
-	// Enhanced query metrics
-	QueryFailuresByStatus = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_failures_by_status",
-		metrics.Counter,
-		metrics.Default,
-	)
-	
-	QueryBackoffEvents = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_backoff_events_total",
-		metrics.Counter,
-		metrics.Default,
-	)
-	
-	QueryBackoffDuration = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_backoff_duration_seconds",
-		metrics.Trend,
-		metrics.Time,
-	)
-	
-	TraceFetchLatency = metrics.NewRegistry().MustNewMetric(
-		"tempo_trace_fetch_latency_seconds",
-		metrics.Trend,
-		metrics.Time,
-	)
-	
-	TraceFetchFailures = metrics.NewRegistry().MustNewMetric(
-		"tempo_trace_fetch_failures_total",
-		metrics.Counter,
-		metrics.Default,
-	)
-	
-	QueryTimeBucketQueries = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_time_bucket_queries_total",
-		metrics.Counter,
-		metrics.Default,
-	)
-	
-	QueryTimeBucketDuration = metrics.NewRegistry().MustNewMetric(
-		"tempo_query_time_bucket_duration_seconds",
-		metrics.Trend,
-		metrics.Time,
-	)
-)
-
 // TestContext holds test identification information for metric tagging
 type TestContext struct {
 	TestName   string
@@ -111,28 +16,28 @@ type TestContext struct {
 }
 
 // RecordIngestion records ingestion metrics
-func RecordIngestion(state *lib.State, bytes int64, traces int, duration time.Duration) {
-	RecordIngestionWithContext(state, nil, bytes, traces, duration)
+func RecordIngestion(state *lib.State, m *tempoMetrics, bytes int64, traces int, duration time.Duration) {
+	RecordIngestionWithContext(state, m, nil, bytes, traces, duration)
 }
 
 // RecordIngestionWithContext records ingestion metrics with test context tags
-func RecordIngestionWithContext(state *lib.State, testCtx *TestContext, bytes int64, traces int, duration time.Duration) {
-	if state == nil || state.Samples == nil {
+func RecordIngestionWithContext(state *lib.State, m *tempoMetrics, testCtx *TestContext, bytes int64, traces int, duration time.Duration) {
+	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
 	
 	now := time.Now()
 	ctx := context.Background()
 	
-	// k6 automatically includes tags from options.tags in metrics
-	// Tags from the k6 script's options.tags (test_name, target_qps, target_mbps)
-	// will be automatically included by k6's metrics system
-	// We don't need to manually set Tags here - k6 handles it via state
+	// Get tags from state
+	// Tags must not be nil to avoid nil pointer dereference in k6 metrics system
+	tags := state.Tags.GetCurrentValues().Tags
 	
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: IngestionBytesTotal,
+			Metric: m.IngestionBytesTotal,
+			Tags:   tags,
 		},
 		Value: float64(bytes),
 	})
@@ -140,7 +45,8 @@ func RecordIngestionWithContext(state *lib.State, testCtx *TestContext, bytes in
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: IngestionTracesTotal,
+			Metric: m.IngestionTracesTotal,
+			Tags:   tags,
 		},
 		Value: float64(traces),
 	})
@@ -148,7 +54,8 @@ func RecordIngestionWithContext(state *lib.State, testCtx *TestContext, bytes in
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: IngestionDuration,
+			Metric: m.IngestionDuration,
+			Tags:   tags,
 		},
 		Value: metrics.D(duration),
 	})
@@ -159,7 +66,8 @@ func RecordIngestionWithContext(state *lib.State, testCtx *TestContext, bytes in
 		metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 			Time: now,
 			TimeSeries: metrics.TimeSeries{
-				Metric: IngestionRateBytesPerSec,
+				Metric: m.IngestionRateBytesPerSec,
+				Tags:   tags,
 			},
 			Value: rate,
 		})
@@ -167,23 +75,27 @@ func RecordIngestionWithContext(state *lib.State, testCtx *TestContext, bytes in
 }
 
 // RecordQuery records query metrics
-func RecordQuery(state *lib.State, duration time.Duration, spans int, success bool) {
-	RecordQueryDetailed(state, duration, spans, success, "", 0)
+func RecordQuery(state *lib.State, m *tempoMetrics, duration time.Duration, spans int, success bool) {
+	RecordQueryDetailed(state, m, duration, spans, success, "", 0)
 }
 
 // RecordQueryDetailed records query metrics with additional context
-func RecordQueryDetailed(state *lib.State, duration time.Duration, spans int, success bool, queryName string, statusCode int) {
-	if state == nil || state.Samples == nil {
+func RecordQueryDetailed(state *lib.State, m *tempoMetrics, duration time.Duration, spans int, success bool, queryName string, statusCode int) {
+	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
 	
 	now := time.Now()
 	ctx := context.Background()
 	
+	// Get tags from state
+	tags := state.Tags.GetCurrentValues().Tags
+	
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: QueryDuration,
+			Metric: m.QueryDuration,
+			Tags:   tags,
 		},
 		Value: metrics.D(duration),
 	})
@@ -191,7 +103,8 @@ func RecordQueryDetailed(state *lib.State, duration time.Duration, spans int, su
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: QueryRequestsTotal,
+			Metric: m.QueryRequestsTotal,
+			Tags:   tags,
 		},
 		Value: 1,
 	})
@@ -200,7 +113,8 @@ func RecordQueryDetailed(state *lib.State, duration time.Duration, spans int, su
 		metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 			Time: now,
 			TimeSeries: metrics.TimeSeries{
-				Metric: QueryFailuresTotal,
+				Metric: m.QueryFailuresTotal,
+				Tags:   tags,
 			},
 			Value: 1,
 		})
@@ -209,7 +123,8 @@ func RecordQueryDetailed(state *lib.State, duration time.Duration, spans int, su
 			metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 				Time: now,
 				TimeSeries: metrics.TimeSeries{
-					Metric: QueryFailuresByStatus,
+					Metric: m.QueryFailuresByStatus,
+					Tags:   tags,
 				},
 				Value: float64(statusCode),
 			})
@@ -220,7 +135,8 @@ func RecordQueryDetailed(state *lib.State, duration time.Duration, spans int, su
 		metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 			Time: now,
 			TimeSeries: metrics.TimeSeries{
-				Metric: QuerySpansReturned,
+				Metric: m.QuerySpansReturned,
+				Tags:   tags,
 			},
 			Value: float64(spans),
 		})
@@ -228,18 +144,22 @@ func RecordQueryDetailed(state *lib.State, duration time.Duration, spans int, su
 }
 
 // RecordBackoff records backoff events
-func RecordBackoff(state *lib.State, duration time.Duration) {
-	if state == nil || state.Samples == nil {
+func RecordBackoff(state *lib.State, m *tempoMetrics, duration time.Duration) {
+	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
 	
 	now := time.Now()
 	ctx := context.Background()
 	
+	// Get tags from state
+	tags := state.Tags.GetCurrentValues().Tags
+	
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: QueryBackoffEvents,
+			Metric: m.QueryBackoffEvents,
+			Tags:   tags,
 		},
 		Value: 1,
 	})
@@ -247,31 +167,38 @@ func RecordBackoff(state *lib.State, duration time.Duration) {
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: QueryBackoffDuration,
+			Metric: m.QueryBackoffDuration,
+			Tags:   tags,
 		},
 		Value: metrics.D(duration),
 	})
 }
 
-// MetricsState wraps lib.State for trace fetch
+// MetricsState wraps lib.State and metrics for trace fetch
 type MetricsState struct {
-	State *lib.State
+	State   *lib.State
+	Metrics *tempoMetrics
 }
 
 // RecordTraceFetch records trace fetch metrics
 func RecordTraceFetch(metricsState *MetricsState, duration time.Duration, success bool) {
-	if metricsState == nil || metricsState.State == nil || metricsState.State.Samples == nil {
+	if metricsState == nil || metricsState.State == nil || metricsState.State.Samples == nil || metricsState.Metrics == nil {
 		return
 	}
 	
 	now := time.Now()
 	state := metricsState.State
+	m := metricsState.Metrics
 	ctx := context.Background()
+	
+	// Get tags from state
+	tags := state.Tags.GetCurrentValues().Tags
 	
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: TraceFetchLatency,
+			Metric: m.TraceFetchLatency,
+			Tags:   tags,
 		},
 		Value: metrics.D(duration),
 	})
@@ -280,7 +207,8 @@ func RecordTraceFetch(metricsState *MetricsState, duration time.Duration, succes
 		metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 			Time: now,
 			TimeSeries: metrics.TimeSeries{
-				Metric: TraceFetchFailures,
+				Metric: m.TraceFetchFailures,
+				Tags:   tags,
 			},
 			Value: 1,
 		})
@@ -288,18 +216,22 @@ func RecordTraceFetch(metricsState *MetricsState, duration time.Duration, succes
 }
 
 // RecordTimeBucketQuery records time bucket query metrics
-func RecordTimeBucketQuery(state *lib.State, bucketName string, duration time.Duration) {
-	if state == nil || state.Samples == nil {
+func RecordTimeBucketQuery(state *lib.State, m *tempoMetrics, bucketName string, duration time.Duration) {
+	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
 	
 	now := time.Now()
 	ctx := context.Background()
 	
+	// Get tags from state
+	tags := state.Tags.GetCurrentValues().Tags
+	
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: QueryTimeBucketQueries,
+			Metric: m.QueryTimeBucketQueries,
+			Tags:   tags,
 		},
 		Value: 1,
 	})
@@ -307,7 +239,8 @@ func RecordTimeBucketQuery(state *lib.State, bucketName string, duration time.Du
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
-			Metric: QueryTimeBucketDuration,
+			Metric: m.QueryTimeBucketDuration,
+			Tags:   tags,
 		},
 		Value: metrics.D(duration),
 	})

@@ -26,6 +26,16 @@ type Config struct {
 
 	// Semantic attributes
 	UseSemanticAttributes bool `js:"useSemanticAttributes"` // Use OTel semantic conventions
+
+	// Workflow-based generation
+	UseWorkflows            bool              `js:"useWorkflows"`            // Enable workflow-based trace generation
+	WorkflowWeights         map[string]float64 `js:"workflowWeights"`         // Distribution of workflows
+	BusinessAttributesDensity float64          `js:"businessAttributesDensity"` // How many business attrs per span (0.0-1.0)
+
+	// Cardinality and tags
+	CardinalityConfig map[string]int `js:"cardinalityConfig"` // Override cardinality per attribute (optional)
+	EnableTags        bool           `js:"enableTags"`        // Enable additional tag generation
+	TagDensity        float64        `js:"tagDensity"`       // Probability of adding tags (0.0-1.0)
 }
 
 // DefaultConfig returns a config with sensible defaults
@@ -50,7 +60,13 @@ func DefaultConfig() Config {
 			"producer": 0.05,
 			"consumer": 0.05,
 		},
-		ResourceAttributes: make(map[string]string),
+		ResourceAttributes:      make(map[string]string),
+		UseWorkflows:            false,
+		WorkflowWeights:         make(map[string]float64),
+		BusinessAttributesDensity: 0.8,
+		CardinalityConfig:       make(map[string]int),
+		EnableTags:              false,
+		TagDensity:              0.9,
 	}
 }
 

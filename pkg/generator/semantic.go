@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"fmt"
 	"math/rand"
 
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
@@ -259,6 +260,314 @@ func generateSemanticAttributes(kind tracev1.Span_SpanKind, serviceName string, 
 				},
 			},
 		})
+	}
+
+	return attrs
+}
+
+// generateBusinessAttributes generates business domain attributes based on workflow context
+func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config Config, rng *rand.Rand) []*commonv1.KeyValue {
+	attrs := make([]*commonv1.KeyValue, 0)
+	
+	if ctx == nil {
+		return attrs
+	}
+	
+	density := config.BusinessAttributesDensity
+	if density <= 0 {
+		density = 0.8 // Default 80%
+	}
+	if density > 1 {
+		density = 1
+	}
+	
+	// Add user_id to most services
+	if rng.Float64() < density && ctx.UserID != "" {
+		attrs = append(attrs, &commonv1.KeyValue{
+			Key: "user.id",
+			Value: &commonv1.AnyValue{
+				Value: &commonv1.AnyValue_StringValue{
+					StringValue: ctx.UserID,
+				},
+			},
+		})
+	}
+	
+	// Service-specific business attributes
+	switch serviceName {
+	case "auth":
+		if rng.Float64() < density && ctx.SessionID != "" {
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "session.id",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: ctx.SessionID,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.6 {
+			authMethods := []string{"password", "oauth", "jwt", "saml"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "auth.method",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: authMethods[rng.Intn(len(authMethods))],
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.5 {
+			tokenTypes := []string{"bearer", "api_key", "session"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "auth.token_type",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: tokenTypes[rng.Intn(len(tokenTypes))],
+					},
+				},
+			})
+		}
+		
+	case "payment":
+		if rng.Float64() < density && ctx.PaymentID != "" {
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "payment.id",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: ctx.PaymentID,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density {
+			amount := float64(rng.Intn(10000)+100) / 100.0 // $1.00 to $100.00
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "payment.amount",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_DoubleValue{
+						DoubleValue: amount,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density {
+			currencies := []string{"USD", "EUR", "GBP", "JPY"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "payment.currency",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: currencies[rng.Intn(len(currencies))],
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.8 {
+			methods := []string{"credit_card", "debit_card", "paypal", "bank_transfer"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "payment.method",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: methods[rng.Intn(len(methods))],
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.7 {
+			statuses := []string{"pending", "completed", "failed", "refunded"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "payment.status",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: statuses[rng.Intn(len(statuses))],
+					},
+				},
+			})
+		}
+		
+	case "database":
+		if rng.Float64() < density*0.8 {
+			tables := []string{"users", "orders", "products", "sessions", "payments", "shipments"}
+			table := tables[rng.Intn(len(tables))]
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "db.table",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: table,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.6 {
+			queryTypes := []string{"SELECT", "INSERT", "UPDATE", "DELETE"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "db.query_type",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: queryTypes[rng.Intn(len(queryTypes))],
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.5 {
+			rowsAffected := rng.Intn(1000) + 1
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "db.rows_affected",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_IntValue{
+						IntValue: int64(rowsAffected),
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.4 {
+			cacheHit := rng.Float64() < 0.3 // 30% cache hit rate
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "db.cache_hit",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_BoolValue{
+						BoolValue: cacheHit,
+					},
+				},
+			})
+		}
+		
+	case "cache":
+		if rng.Float64() < density {
+			cacheKey := fmt.Sprintf("cache:%s:%d", serviceName, rng.Intn(10000))
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "cache.key",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: cacheKey,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.8 {
+			cacheHit := rng.Float64() < 0.7 // 70% cache hit rate
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "cache.hit",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_BoolValue{
+						BoolValue: cacheHit,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.5 {
+			ttl := rng.Intn(3600) + 60 // 60 to 3660 seconds
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "cache.ttl",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_IntValue{
+						IntValue: int64(ttl),
+					},
+				},
+			})
+		}
+		
+	case "shipping":
+		if rng.Float64() < density && ctx.ShipmentID != "" {
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "shipment.id",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: ctx.ShipmentID,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.8 {
+			carriers := []string{"UPS", "FedEx", "DHL", "USPS"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "shipment.carrier",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: carriers[rng.Intn(len(carriers))],
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.6 {
+			trackingNumber := fmt.Sprintf("TRK%012d", rng.Intn(1000000000000))
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "shipment.tracking_number",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: trackingNumber,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.5 {
+			destinations := []string{"US", "CA", "UK", "DE", "FR", "JP"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "shipment.destination",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: destinations[rng.Intn(len(destinations))],
+					},
+				},
+			})
+		}
+		
+	case "analytics":
+		if rng.Float64() < density {
+			events := []string{"page_view", "click", "purchase", "search", "login", "logout"}
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "analytics.event_name",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: events[rng.Intn(len(events))],
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.6 {
+			pageViews := rng.Intn(10) + 1
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "analytics.page_views",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_IntValue{
+						IntValue: int64(pageViews),
+					},
+				},
+			})
+		}
+		if rng.Float64() < density*0.5 {
+			sessionDuration := rng.Intn(3600) + 60 // 60 to 3660 seconds
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "analytics.session_duration_seconds",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_IntValue{
+						IntValue: int64(sessionDuration),
+					},
+				},
+			})
+		}
+		
+	case "frontend", "backend":
+		if rng.Float64() < density && ctx.OrderID != "" {
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "order.id",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: ctx.OrderID,
+					},
+				},
+			})
+		}
+		if rng.Float64() < density && ctx.ProductID != "" {
+			attrs = append(attrs, &commonv1.KeyValue{
+				Key: "product.id",
+				Value: &commonv1.AnyValue{
+					Value: &commonv1.AnyValue_StringValue{
+						StringValue: ctx.ProductID,
+					},
+				},
+			})
+		}
 	}
 
 	return attrs

@@ -34,6 +34,24 @@ export default function() {
       spanDepth: 3,
       attributeCount: 5,
       attributeValueSize: 32,
+      useSemanticAttributes: true,
+      useWorkflows: true,  // Enable workflow-based generation
+      workflowWeights: {    // Distribution of workflows
+        'place_order': 0.3,
+        'user_login': 0.2,
+        'browse_products': 0.2,
+        'search_products': 0.15,
+        'view_dashboard': 0.1,
+        'process_refund': 0.05
+      },
+      businessAttributesDensity: 0.8,  // 80% of spans get business attributes
+      enableTags: true,  // Enable tag generation
+      tagDensity: 0.9,   // 90% of spans get tags
+      cardinalityConfig: {  // Optional cardinality overrides
+        'customer_id': 5000,
+        'tenant_id': 50,
+        'region': 5
+      }
     }
   });
   

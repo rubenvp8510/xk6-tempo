@@ -197,7 +197,7 @@ func (mi *ModuleInstance) newIngestClient(config map[string]interface{}) (*Inges
 		cfg.TargetMBps = targetMBps
 	}
 
-	return NewIngestClient(mi.vu, cfg)
+	return NewIngestClient(mi.vu, cfg, mi.metrics)
 }
 
 // newQueryClient creates a new Tempo query client
@@ -225,7 +225,7 @@ func (mi *ModuleInstance) newQueryClient(config map[string]interface{}) (*QueryC
 
 // createQueryWorkload creates a query workload manager
 func (mi *ModuleInstance) createQueryWorkload(queryClient *QueryClient, workloadConfig map[string]interface{}, queries map[string]interface{}) (*QueryWorkload, error) {
-	return CreateQueryWorkload(queryClient, mi.vu, workloadConfig, queries)
+	return CreateQueryWorkload(queryClient, mi.vu, mi.metrics, workloadConfig, queries)
 }
 
 // generateTrace generates a single trace
@@ -284,6 +284,37 @@ func (mi *ModuleInstance) generateTrace(config map[string]interface{}) (ptrace.T
 			}
 		}
 	}
+	// Workflow configuration
+	if useWorkflows, ok := config["useWorkflows"].(bool); ok {
+		cfg.UseWorkflows = useWorkflows
+	}
+	if workflowWeights, ok := config["workflowWeights"].(map[string]interface{}); ok {
+		cfg.WorkflowWeights = make(map[string]float64)
+		for k, v := range workflowWeights {
+			if weight, ok := v.(float64); ok {
+				cfg.WorkflowWeights[k] = weight
+			}
+		}
+	}
+	if businessDensity, ok := config["businessAttributesDensity"].(float64); ok {
+		cfg.BusinessAttributesDensity = businessDensity
+	}
+	// Tag configuration
+	if enableTags, ok := config["enableTags"].(bool); ok {
+		cfg.EnableTags = enableTags
+	}
+	if tagDensity, ok := config["tagDensity"].(float64); ok {
+		cfg.TagDensity = tagDensity
+	}
+	// Cardinality configuration
+	if cardinalityConfig, ok := config["cardinalityConfig"].(map[string]interface{}); ok {
+		cfg.CardinalityConfig = make(map[string]int)
+		for k, v := range cardinalityConfig {
+			if cardinality, ok := getIntValue(v); ok {
+				cfg.CardinalityConfig[k] = cardinality
+			}
+		}
+	}
 
 	return generator.GenerateTrace(cfg), nil
 }
@@ -291,6 +322,12 @@ func (mi *ModuleInstance) generateTrace(config map[string]interface{}) (ptrace.T
 // generateBatch generates a batch of traces
 func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace.Traces, error) {
 	batchConfig := generator.BatchConfig{}
+
+	fmt.Printf("[DEBUG] generateBatch received config keys: ")
+	for k := range config {
+		fmt.Printf("%s, ", k)
+	}
+	fmt.Println()
 
 	if targetSize, ok := getIntValue(config["targetSizeBytes"]); ok && targetSize > 0 {
 		batchConfig.TargetSizeBytes = targetSize
@@ -301,6 +338,11 @@ func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace
 	// Parse traceConfig
 	traceConfig := generator.DefaultConfig()
 	if traceCfgMap, ok := config["traceConfig"].(map[string]interface{}); ok {
+		fmt.Printf("[DEBUG] traceConfig keys: ")
+		for k := range traceCfgMap {
+			fmt.Printf("%s, ", k)
+		}
+		fmt.Println()
 		if services, ok := getIntValue(traceCfgMap["services"]); ok && services > 0 {
 			traceConfig.Services = services
 		}
@@ -350,6 +392,50 @@ func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace
 			for k, v := range spanKindWeights {
 				if weight, ok := v.(float64); ok {
 					traceConfig.SpanKindWeights[k] = weight
+				}
+			}
+		}
+		// Workflow configuration
+		fmt.Printf("[DEBUG] Looking for useWorkflows in traceCfgMap, value: %v, type: %T\n", traceCfgMap["useWorkflows"], traceCfgMap["useWorkflows"])
+		if useWorkflows, ok := traceCfgMap["useWorkflows"].(bool); ok {
+			traceConfig.UseWorkflows = useWorkflows
+			fmt.Printf("[DEBUG] useWorkflows set to: %v\n", useWorkflows)
+		} else {
+			// Try to handle goja.Value conversion
+			if val := traceCfgMap["useWorkflows"]; val != nil {
+				fmt.Printf("[DEBUG] useWorkflows exists but not bool, trying string conversion\n")
+				if strVal, ok := val.(string); ok && strVal == "true" {
+					traceConfig.UseWorkflows = true
+					fmt.Printf("[DEBUG] useWorkflows set via string: true\n")
+				}
+			} else {
+				fmt.Printf("[DEBUG] useWorkflows is nil in traceCfgMap\n")
+			}
+		}
+		if workflowWeights, ok := traceCfgMap["workflowWeights"].(map[string]interface{}); ok {
+			traceConfig.WorkflowWeights = make(map[string]float64)
+			for k, v := range workflowWeights {
+				if weight, ok := v.(float64); ok {
+					traceConfig.WorkflowWeights[k] = weight
+				}
+			}
+		}
+		if businessDensity, ok := traceCfgMap["businessAttributesDensity"].(float64); ok {
+			traceConfig.BusinessAttributesDensity = businessDensity
+		}
+		// Tag configuration
+		if enableTags, ok := traceCfgMap["enableTags"].(bool); ok {
+			traceConfig.EnableTags = enableTags
+		}
+		if tagDensity, ok := traceCfgMap["tagDensity"].(float64); ok {
+			traceConfig.TagDensity = tagDensity
+		}
+		// Cardinality configuration
+		if cardinalityConfig, ok := traceCfgMap["cardinalityConfig"].(map[string]interface{}); ok {
+			traceConfig.CardinalityConfig = make(map[string]int)
+			for k, v := range cardinalityConfig {
+				if cardinality, ok := getIntValue(v); ok {
+					traceConfig.CardinalityConfig[k] = cardinality
 				}
 			}
 		}

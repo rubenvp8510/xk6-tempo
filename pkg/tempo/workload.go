@@ -14,7 +14,7 @@ import (
 )
 
 // CreateQueryWorkload creates a query workload manager  
-func CreateQueryWorkload(queryClient *QueryClient, vu VU, workloadConfig map[string]interface{}, queries map[string]interface{}) (*QueryWorkload, error) {
+func CreateQueryWorkload(queryClient *QueryClient, vu VU, m *tempoMetrics, workloadConfig map[string]interface{}, queries map[string]interface{}) (*QueryWorkload, error) {
 	// Parse workload config
 	cfg := DefaultQueryWorkloadConfig()
 	if targetQPS, ok := workloadConfig["targetQPS"].(float64); ok {
@@ -119,7 +119,7 @@ func CreateQueryWorkload(queryClient *QueryClient, vu VU, workloadConfig map[str
 	}
 
 	// Create workload
-	workload := NewQueryWorkload(cfg, queryClient, workloadState, queryDefs)
+	workload := NewQueryWorkload(cfg, queryClient, workloadState, queryDefs, m)
 
 	return workload, nil
 }
@@ -136,6 +136,7 @@ type QueryWorkload struct {
 	testStartTime   time.Time
 	planIndex       int
 	planMutex       sync.Mutex
+	metrics         *tempoMetrics
 }
 
 // WorkloadState holds k6 VU for metrics in workload
@@ -149,6 +150,7 @@ func NewQueryWorkload(
 	queryClient *QueryClient,
 	state *WorkloadState,
 	queries map[string]QueryDefinition,
+	m *tempoMetrics,
 ) *QueryWorkload {
 	// Calculate per-VU QPS (k6 handles VU distribution, so we use target QPS directly)
 	perVUQPS := config.TargetQPS * config.QPSMultiplier
@@ -166,6 +168,7 @@ func NewQueryWorkload(
 		queries:       queries,
 		rateLimiter:   limiter,
 		testStartTime: time.Now(),
+		metrics:       m,
 	}
 }
 
@@ -241,8 +244,8 @@ func (qw *QueryWorkload) executeNext(ctx context.Context) (*SearchResponse, erro
 		spans = len(result.Traces)
 	}
 	if qw.state.VU.State() != nil {
-		RecordQueryDetailed(qw.state.VU.State(), searchDuration, spans, err == nil, planEntry.QueryName, statusCode)
-		RecordTimeBucketQuery(qw.state.VU.State(), planEntry.BucketName, searchDuration)
+		RecordQueryDetailed(qw.state.VU.State(), qw.metrics, searchDuration, spans, err == nil, planEntry.QueryName, statusCode)
+		RecordTimeBucketQuery(qw.state.VU.State(), qw.metrics, planEntry.BucketName, searchDuration)
 	}
 	
 	// Handle HTTP response for backoff
@@ -263,7 +266,7 @@ func (qw *QueryWorkload) executeNext(ctx context.Context) (*SearchResponse, erro
 	
 	// Record backoff if it changed
 	if qw.config.EnableBackoff && qw.backoffDuration > oldBackoff && qw.state.VU.State() != nil {
-		RecordBackoff(qw.state.VU.State(), qw.backoffDuration-oldBackoff)
+		RecordBackoff(qw.state.VU.State(), qw.metrics, qw.backoffDuration-oldBackoff)
 	}
 
 	return result, err
@@ -295,7 +298,8 @@ func (qw *QueryWorkload) executeSearchAndFetch(ctx context.Context) error {
 		
 		// Record trace fetch metrics
 		metricsState := &MetricsState{
-			State: qw.state.VU.State(),
+			State:   qw.state.VU.State(),
+			Metrics: qw.metrics,
 		}
 		if fetchErr != nil {
 			// Record fetch failure but don't fail the whole operation
@@ -387,7 +391,7 @@ func (qw *QueryWorkload) executeWithDefaultTimeRange(ctx context.Context, queryD
 		spans = len(result.Traces)
 	}
 	if qw.state.VU.State() != nil {
-		RecordQueryDetailed(qw.state.VU.State(), searchDuration, spans, err == nil, queryDef.Name, statusCode)
+		RecordQueryDetailed(qw.state.VU.State(), qw.metrics, searchDuration, spans, err == nil, queryDef.Name, statusCode)
 	}
 	
 	if httpResp != nil {
