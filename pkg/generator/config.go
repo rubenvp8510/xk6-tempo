@@ -36,6 +36,10 @@ type Config struct {
 	CardinalityConfig map[string]int `js:"cardinalityConfig"` // Override cardinality per attribute (optional)
 	EnableTags        bool           `js:"enableTags"`        // Enable additional tag generation
 	TagDensity        float64        `js:"tagDensity"`       // Probability of adding tags (0.0-1.0)
+
+	// Tree-based generation
+	UseTraceTree    bool             `js:"useTraceTree"`    // Enable tree-based trace generation
+	TraceTreeConfig *TraceTreeConfig `js:"traceTree"`       // Tree configuration
 }
 
 // DefaultConfig returns a config with sensible defaults
@@ -80,4 +84,42 @@ type BatchConfig struct {
 type RateLimitConfig struct {
 	TargetMBps      float64 `js:"targetMBps"`      // Target throughput in MB/s
 	BurstMultiplier float64 `js:"burstMultiplier"` // Burst allowance (default: 1.5)
+}
+
+// ThroughputConfig represents calculated throughput configuration
+type ThroughputConfig struct {
+	TargetBytesPerSec float64 `js:"targetBytesPerSec"` // Target throughput in bytes/s
+	TracesPerVU       float64 `js:"tracesPerVU"`       // Computed traces per second per VU
+	EstimatedSizeB    int     `js:"estimatedSizeB"`    // Estimated trace size in bytes
+	TotalTracesPerSec float64 `js:"totalTracesPerSec"` // Total traces per second across all VUs
+}
+
+// CalculateThroughput calculates the number of traces per second per VU needed to achieve target bytes/s
+// Returns a ThroughputConfig with the calculated values
+func CalculateThroughput(config Config, targetBytesPerSec float64, numVUs int) ThroughputConfig {
+	if targetBytesPerSec <= 0 {
+		targetBytesPerSec = 1024 * 1024 // Default to 1 MB/s
+	}
+	if numVUs <= 0 {
+		numVUs = 1 // Default to 1 VU
+	}
+	
+	// Estimate trace size
+	estimatedSizeB := EstimateTraceSizeFromConfig(config)
+	if estimatedSizeB == 0 {
+		estimatedSizeB = 1000 // Fallback estimate
+	}
+	
+	// Calculate total traces per second needed
+	totalTracesPerSec := targetBytesPerSec / float64(estimatedSizeB)
+	
+	// Calculate traces per second per VU
+	tracesPerVU := totalTracesPerSec / float64(numVUs)
+	
+	return ThroughputConfig{
+		TargetBytesPerSec: targetBytesPerSec,
+		TracesPerVU:       tracesPerVU,
+		EstimatedSizeB:    estimatedSizeB,
+		TotalTracesPerSec: totalTracesPerSec,
+	}
 }

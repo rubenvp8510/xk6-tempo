@@ -273,3 +273,12 @@ func (cm *CardinalityManager) GetCardinalityStats() map[string]int {
 	return stats
 }
 
+// ResetPools clears all value pools for reproducibility with seeds
+func (cm *CardinalityManager) ResetPools() {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	
+	cm.valuePools = make(map[string][]string)
+	cm.cardinality = make(map[string]int)
+}
+

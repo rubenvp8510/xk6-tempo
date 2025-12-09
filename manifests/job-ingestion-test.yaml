@@ -20,16 +20,27 @@ spec:
         image: quay.io/rvargasp/xk6-tempo:latest
         imagePullPolicy: Always
         command: ["k6", "run", "/scripts/ingestion-test.js"]
+        env:
+        - name: VUS
+          value: "10"
+        - name: MAX_VUS
+          value: "50"
+        - name: TARGET_BYTES_PER_SEC
+          value: "1048576"
+        - name: DURATION
+          value: "5m"
+        - name: TRACE_PROFILE
+          value: "medium"
         volumeMounts:
         - name: test-scripts
           mountPath: /scripts
         resources:
           requests:
-            cpu: "500m"
-            memory: "512Mi"
-          limits:
             cpu: "2000m"
             memory: "2Gi"
+          limits:
+            cpu: "4000m"
+            memory: "4Gi"
       volumes:
       - name: test-scripts
         configMap:

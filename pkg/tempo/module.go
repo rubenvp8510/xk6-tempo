@@ -167,6 +167,8 @@ func (mi *ModuleInstance) Exports() modules.Exports {
 			"generateBatch":       mi.generateBatch,
 			"createRateLimiter":   mi.createRateLimiter,
 			"createQueryWorkload": mi.createQueryWorkload,
+			"estimateTraceSize":   mi.estimateTraceSize,
+			"calculateThroughput": mi.calculateThroughput,
 		},
 	}
 }
@@ -316,18 +318,24 @@ func (mi *ModuleInstance) generateTrace(config map[string]interface{}) (ptrace.T
 		}
 	}
 
+	// Tree-based generation
+	if useTraceTree, ok := config["useTraceTree"].(bool); ok && useTraceTree {
+		if traceTreeObj, ok := config["traceTree"].(map[string]interface{}); ok {
+			treeConfig, err := parseTraceTree(traceTreeObj)
+			if err != nil {
+				return ptrace.Traces{}, fmt.Errorf("failed to parse trace tree: %v", err)
+			}
+			cfg.UseTraceTree = true
+			cfg.TraceTreeConfig = treeConfig
+		}
+	}
+
 	return generator.GenerateTrace(cfg), nil
 }
 
 // generateBatch generates a batch of traces
 func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace.Traces, error) {
 	batchConfig := generator.BatchConfig{}
-
-	fmt.Printf("[DEBUG] generateBatch received config keys: ")
-	for k := range config {
-		fmt.Printf("%s, ", k)
-	}
-	fmt.Println()
 
 	if targetSize, ok := getIntValue(config["targetSizeBytes"]); ok && targetSize > 0 {
 		batchConfig.TargetSizeBytes = targetSize
@@ -338,11 +346,6 @@ func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace
 	// Parse traceConfig
 	traceConfig := generator.DefaultConfig()
 	if traceCfgMap, ok := config["traceConfig"].(map[string]interface{}); ok {
-		fmt.Printf("[DEBUG] traceConfig keys: ")
-		for k := range traceCfgMap {
-			fmt.Printf("%s, ", k)
-		}
-		fmt.Println()
 		if services, ok := getIntValue(traceCfgMap["services"]); ok && services > 0 {
 			traceConfig.Services = services
 		}
@@ -396,20 +399,14 @@ func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace
 			}
 		}
 		// Workflow configuration
-		fmt.Printf("[DEBUG] Looking for useWorkflows in traceCfgMap, value: %v, type: %T\n", traceCfgMap["useWorkflows"], traceCfgMap["useWorkflows"])
 		if useWorkflows, ok := traceCfgMap["useWorkflows"].(bool); ok {
 			traceConfig.UseWorkflows = useWorkflows
-			fmt.Printf("[DEBUG] useWorkflows set to: %v\n", useWorkflows)
 		} else {
 			// Try to handle goja.Value conversion
 			if val := traceCfgMap["useWorkflows"]; val != nil {
-				fmt.Printf("[DEBUG] useWorkflows exists but not bool, trying string conversion\n")
 				if strVal, ok := val.(string); ok && strVal == "true" {
 					traceConfig.UseWorkflows = true
-					fmt.Printf("[DEBUG] useWorkflows set via string: true\n")
 				}
-			} else {
-				fmt.Printf("[DEBUG] useWorkflows is nil in traceCfgMap\n")
 			}
 		}
 		if workflowWeights, ok := traceCfgMap["workflowWeights"].(map[string]interface{}); ok {
@@ -439,6 +436,18 @@ func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace
 				}
 			}
 		}
+
+		// Tree-based generation
+		if useTraceTree, ok := traceCfgMap["useTraceTree"].(bool); ok && useTraceTree {
+			if traceTreeObj, ok := traceCfgMap["traceTree"].(map[string]interface{}); ok {
+				treeConfig, err := parseTraceTree(traceTreeObj)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse trace tree: %v", err)
+				}
+				traceConfig.UseTraceTree = true
+				traceConfig.TraceTreeConfig = treeConfig
+			}
+		}
 	}
 	batchConfig.TraceConfig = traceConfig
 
@@ -458,4 +467,347 @@ func (mi *ModuleInstance) createRateLimiter(config map[string]interface{}) (*gen
 	}
 
 	return generator.NewByteRateLimiter(targetMBps, burstMultiplier), nil
+}
+
+// estimateTraceSize estimates the size of a trace in bytes based on configuration
+func (mi *ModuleInstance) estimateTraceSize(config map[string]interface{}) (int, error) {
+	cfg := parseConfigFromMap(config)
+	return generator.EstimateTraceSizeFromConfig(cfg), nil
+}
+
+// calculateThroughput calculates the number of traces per second per VU needed to achieve target bytes/s
+func (mi *ModuleInstance) calculateThroughput(config map[string]interface{}, targetBytesPerSec interface{}, numVUs interface{}) (map[string]interface{}, error) {
+	cfg := parseConfigFromMap(config)
+
+	// Convert targetBytesPerSec to float64
+	var bytesPerSec float64
+	switch v := targetBytesPerSec.(type) {
+	case float64:
+		bytesPerSec = v
+	case int:
+		bytesPerSec = float64(v)
+	case int64:
+		bytesPerSec = float64(v)
+	default:
+		bytesPerSec = 1024 * 1024 // Default 1 MB/s
+	}
+
+	// Convert numVUs to int
+	var vus int
+	if vusVal, ok := getIntValue(numVUs); ok {
+		vus = vusVal
+	} else {
+		vus = 1 // Default
+	}
+
+	throughput := generator.CalculateThroughput(cfg, bytesPerSec, vus)
+
+	return map[string]interface{}{
+		"targetBytesPerSec": throughput.TargetBytesPerSec,
+		"tracesPerVU":       throughput.TracesPerVU,
+		"estimatedSizeB":    throughput.EstimatedSizeB,
+		"totalTracesPerSec": throughput.TotalTracesPerSec,
+	}, nil
+}
+
+// parseConfigFromMap parses a Config from a JavaScript map (helper function)
+func parseConfigFromMap(config map[string]interface{}) generator.Config {
+	cfg := generator.DefaultConfig()
+
+	if services, ok := getIntValue(config["services"]); ok && services > 0 {
+		cfg.Services = services
+	}
+	if spanDepth, ok := getIntValue(config["spanDepth"]); ok && spanDepth > 0 {
+		cfg.SpanDepth = spanDepth
+	}
+	if spansPerTrace, ok := getIntValue(config["spansPerTrace"]); ok && spansPerTrace > 0 {
+		cfg.SpansPerTrace = spansPerTrace
+	}
+	if attributeCount, ok := getIntValue(config["attributeCount"]); ok && attributeCount > 0 {
+		cfg.AttributeCount = attributeCount
+	}
+	if attributeValueSize, ok := getIntValue(config["attributeValueSize"]); ok && attributeValueSize > 0 {
+		cfg.AttributeValueSize = attributeValueSize
+	}
+	if eventCount, ok := getIntValue(config["eventCount"]); ok {
+		cfg.EventCount = eventCount
+	}
+	if resourceAttrs, ok := config["resourceAttributes"].(map[string]interface{}); ok {
+		cfg.ResourceAttributes = make(map[string]string)
+		for k, v := range resourceAttrs {
+			if str, ok := v.(string); ok {
+				cfg.ResourceAttributes[k] = str
+			}
+		}
+	}
+	if durationBaseMs, ok := getIntValue(config["durationBaseMs"]); ok && durationBaseMs > 0 {
+		cfg.DurationBaseMs = durationBaseMs
+	}
+	if durationVarianceMs, ok := getIntValue(config["durationVarianceMs"]); ok && durationVarianceMs >= 0 {
+		cfg.DurationVarianceMs = durationVarianceMs
+	}
+	if errorRate, ok := config["errorRate"].(float64); ok && errorRate >= 0 && errorRate <= 1 {
+		cfg.ErrorRate = errorRate
+	}
+	if maxFanOut, ok := getIntValue(config["maxFanOut"]); ok && maxFanOut > 0 {
+		cfg.MaxFanOut = maxFanOut
+	}
+	if fanOutVariance, ok := config["fanOutVariance"].(float64); ok && fanOutVariance >= 0 && fanOutVariance <= 1 {
+		cfg.FanOutVariance = fanOutVariance
+	}
+	if useSemantic, ok := config["useSemanticAttributes"].(bool); ok {
+		cfg.UseSemanticAttributes = useSemantic
+	}
+	if spanKindWeights, ok := config["spanKindWeights"].(map[string]interface{}); ok {
+		cfg.SpanKindWeights = make(map[string]float64)
+		for k, v := range spanKindWeights {
+			if weight, ok := v.(float64); ok {
+				cfg.SpanKindWeights[k] = weight
+			}
+		}
+	}
+	// Workflow configuration
+	if useWorkflows, ok := config["useWorkflows"].(bool); ok {
+		cfg.UseWorkflows = useWorkflows
+	}
+	if workflowWeights, ok := config["workflowWeights"].(map[string]interface{}); ok {
+		cfg.WorkflowWeights = make(map[string]float64)
+		for k, v := range workflowWeights {
+			if weight, ok := v.(float64); ok {
+				cfg.WorkflowWeights[k] = weight
+			}
+		}
+	}
+	if businessDensity, ok := config["businessAttributesDensity"].(float64); ok {
+		cfg.BusinessAttributesDensity = businessDensity
+	}
+	// Tag configuration
+	if enableTags, ok := config["enableTags"].(bool); ok {
+		cfg.EnableTags = enableTags
+	}
+	if tagDensity, ok := config["tagDensity"].(float64); ok {
+		cfg.TagDensity = tagDensity
+	}
+	// Cardinality configuration
+	if cardinalityConfig, ok := config["cardinalityConfig"].(map[string]interface{}); ok {
+		cfg.CardinalityConfig = make(map[string]int)
+		for k, v := range cardinalityConfig {
+			if cardinality, ok := getIntValue(v); ok {
+				cfg.CardinalityConfig[k] = cardinality
+			}
+		}
+	}
+
+	// Tree-based generation
+	if useTraceTree, ok := config["useTraceTree"].(bool); ok && useTraceTree {
+		if traceTreeObj, ok := config["traceTree"].(map[string]interface{}); ok {
+			treeConfig, err := parseTraceTree(traceTreeObj)
+			if err == nil {
+				cfg.UseTraceTree = true
+				cfg.TraceTreeConfig = treeConfig
+			}
+		}
+	}
+
+	return cfg
+}
+
+// parseTraceTree parsea un árbol de trazas desde un objeto JavaScript
+func parseTraceTree(jsObj map[string]interface{}) (*generator.TraceTreeConfig, error) {
+	config := &generator.TraceTreeConfig{}
+
+	// Parse seed
+	if seed, ok := getIntValue(jsObj["seed"]); ok {
+		config.Seed = int64(seed)
+	} else if seedFloat, ok := jsObj["seed"].(float64); ok {
+		config.Seed = int64(seedFloat)
+	}
+
+	// Parse context
+	if contextObj, ok := jsObj["context"].(map[string]interface{}); ok {
+		ctx := generator.TreeContext{}
+
+		// Parse propagate
+		if propagateArr, ok := contextObj["propagate"].([]interface{}); ok {
+			ctx.Propagate = make([]string, 0, len(propagateArr))
+			for _, v := range propagateArr {
+				if str, ok := v.(string); ok {
+					ctx.Propagate = append(ctx.Propagate, str)
+				}
+			}
+		}
+
+		// Parse cardinality
+		if cardinalityObj, ok := contextObj["cardinality"].(map[string]interface{}); ok {
+			ctx.Cardinality = make(map[string]int)
+			for k, v := range cardinalityObj {
+				if cardinality, ok := getIntValue(v); ok {
+					ctx.Cardinality[k] = cardinality
+				}
+			}
+		}
+
+		config.Context = ctx
+	}
+
+	// Parse defaults
+	if defaultsObj, ok := jsObj["defaults"].(map[string]interface{}); ok {
+		defs := generator.TreeDefaults{
+			UseSemanticAttributes: true,
+			EnableTags:            true,
+			TagDensity:            0.9,
+		}
+
+		if useSemantic, ok := defaultsObj["useSemanticAttributes"].(bool); ok {
+			defs.UseSemanticAttributes = useSemantic
+		}
+		if enableTags, ok := defaultsObj["enableTags"].(bool); ok {
+			defs.EnableTags = enableTags
+		}
+		if tagDensity, ok := defaultsObj["tagDensity"].(float64); ok {
+			defs.TagDensity = tagDensity
+		}
+
+		config.Defaults = defs
+	} else {
+		// Defaults por defecto
+		config.Defaults = generator.TreeDefaults{
+			UseSemanticAttributes: true,
+			EnableTags:            true,
+			TagDensity:            0.9,
+		}
+	}
+
+	// Parse root node
+	if rootObj, ok := jsObj["root"].(map[string]interface{}); ok {
+		rootNode, err := parseTraceTreeNode(rootObj)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse root node: %v", err)
+		}
+		config.Root = rootNode
+	} else {
+		return nil, fmt.Errorf("root node is required")
+	}
+
+	return config, nil
+}
+
+// parseTraceTreeNode parsea un nodo del árbol
+func parseTraceTreeNode(jsObj map[string]interface{}) (*generator.TraceTreeNode, error) {
+	node := &generator.TraceTreeNode{}
+
+	// Service (required)
+	if service, ok := jsObj["service"].(string); ok {
+		node.Service = service
+	} else {
+		return nil, fmt.Errorf("service is required for node")
+	}
+
+	// Operation
+	if operation, ok := jsObj["operation"].(string); ok {
+		node.Operation = operation
+	}
+
+	// SpanKind
+	if spanKind, ok := jsObj["spanKind"].(string); ok {
+		node.SpanKind = spanKind
+	} else {
+		node.SpanKind = "server" // default
+	}
+
+	// Tags
+	if tagsObj, ok := jsObj["tags"].(map[string]interface{}); ok {
+		node.Tags = make(map[string]string)
+		for k, v := range tagsObj {
+			if str, ok := v.(string); ok {
+				node.Tags[k] = str
+			}
+		}
+	}
+
+	// Duration
+	if durationObj, ok := jsObj["duration"].(map[string]interface{}); ok {
+		dur := generator.DurationConfig{}
+		if baseMs, ok := getIntValue(durationObj["baseMs"]); ok {
+			dur.BaseMs = baseMs
+		} else if baseMsFloat, ok := durationObj["baseMs"].(float64); ok {
+			dur.BaseMs = int(baseMsFloat)
+		}
+		if varianceMs, ok := getIntValue(durationObj["varianceMs"]); ok {
+			dur.VarianceMs = varianceMs
+		} else if varianceMsFloat, ok := durationObj["varianceMs"].(float64); ok {
+			dur.VarianceMs = int(varianceMsFloat)
+		}
+		node.Duration = dur
+	}
+
+	// ErrorRate
+	if errorRate, ok := jsObj["errorRate"].(float64); ok {
+		node.ErrorRate = errorRate
+	}
+
+	// ErrorPropagates
+	if errorPropagates, ok := jsObj["errorPropagates"].(bool); ok {
+		node.ErrorPropagates = errorPropagates
+	}
+
+	// Children
+	if childrenArr, ok := jsObj["children"].([]interface{}); ok {
+		node.Children = make([]generator.TraceTreeEdge, 0, len(childrenArr))
+		for _, childObj := range childrenArr {
+			if childMap, ok := childObj.(map[string]interface{}); ok {
+				edge, err := parseTraceTreeEdge(childMap)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse child edge: %v", err)
+				}
+				node.Children = append(node.Children, *edge)
+			}
+		}
+	}
+
+	return node, nil
+}
+
+// parseTraceTreeEdge parsea una arista del árbol
+func parseTraceTreeEdge(jsObj map[string]interface{}) (*generator.TraceTreeEdge, error) {
+	edge := &generator.TraceTreeEdge{}
+
+	// Weight
+	if weight, ok := jsObj["weight"].(float64); ok {
+		edge.Weight = weight
+	}
+
+	// Parallel
+	if parallel, ok := jsObj["parallel"].(bool); ok {
+		edge.Parallel = parallel
+	}
+
+	// Count
+	if countObj, ok := jsObj["count"].(map[string]interface{}); ok {
+		count := generator.CountConfig{Min: 1, Max: 1}
+		if min, ok := getIntValue(countObj["min"]); ok {
+			count.Min = min
+		} else if minFloat, ok := countObj["min"].(float64); ok {
+			count.Min = int(minFloat)
+		}
+		if max, ok := getIntValue(countObj["max"]); ok {
+			count.Max = max
+		} else if maxFloat, ok := countObj["max"].(float64); ok {
+			count.Max = int(maxFloat)
+		}
+		edge.Count = count
+	}
+
+	// Node
+	if nodeObj, ok := jsObj["node"].(map[string]interface{}); ok {
+		node, err := parseTraceTreeNode(nodeObj)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse node: %v", err)
+		}
+		edge.Node = node
+	} else {
+		return nil, fmt.Errorf("node is required for edge")
+	}
+
+	return edge, nil
 }

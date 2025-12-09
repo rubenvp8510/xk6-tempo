@@ -9,6 +9,7 @@ import (
 	"github.com/rvargasp/xk6-tempo/pkg/otlp"
 	"go.k6.io/k6/lib"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
 
 // IngestClient represents the Tempo ingestion client for k6
@@ -143,8 +144,19 @@ func (c *IngestClient) PushBatchWithRateLimit(traces []ptrace.Traces, limiter *g
 	return c.pushBatchWithRateLimitInternal(ctx, traces, limiter)
 }
 
-// estimateTraceSize estimates the size of a trace in bytes
+// estimateTraceSize calculates the actual protobuf-serialized size of a trace in bytes
 func estimateTraceSize(trace ptrace.Traces) int {
+	req := ptraceotlp.NewExportRequestFromTraces(trace)
+	data, err := req.MarshalProto()
+	if err != nil {
+		// Fallback to rough estimate if marshaling fails
+		return estimateTraceSizeRough(trace)
+	}
+	return len(data)
+}
+
+// estimateTraceSizeRough provides a rough estimate as fallback
+func estimateTraceSizeRough(trace ptrace.Traces) int {
 	size := 0
 	for i := 0; i < trace.ResourceSpans().Len(); i++ {
 		resourceSpans := trace.ResourceSpans().At(i)
