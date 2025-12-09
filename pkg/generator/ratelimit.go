@@ -7,6 +7,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	bytesPerMB             = 1024 * 1024
+	defaultBurstMultiplier = 1.5
+	defaultTargetMBps      = 1.0
+	minBurstSize           = 1
+)
+
 // ByteRateLimiter limits throughput based on bytes per second
 type ByteRateLimiter struct {
 	targetBytesPerSec float64
@@ -17,18 +24,14 @@ type ByteRateLimiter struct {
 // NewByteRateLimiter creates a new byte-based rate limiter
 func NewByteRateLimiter(targetMBps float64, burstMultiplier float64) *ByteRateLimiter {
 	if burstMultiplier <= 0 {
-		burstMultiplier = 1.5
+		burstMultiplier = defaultBurstMultiplier
 	}
 	if targetMBps <= 0 {
-		targetMBps = 1.0
+		targetMBps = defaultTargetMBps
 	}
 
-	targetBytesPerSec := targetMBps * 1024 * 1024 // Convert MB/s to bytes/s
-	burstSize := int(targetBytesPerSec * burstMultiplier)
-	if burstSize < 1 {
-		burstSize = 1
-	}
-
+	targetBytesPerSec := targetMBps * bytesPerMB
+	burstSize := calculateBurstSize(targetBytesPerSec, burstMultiplier)
 	limiter := rate.NewLimiter(rate.Limit(targetBytesPerSec), burstSize)
 
 	return &ByteRateLimiter{
@@ -43,16 +46,17 @@ func (r *ByteRateLimiter) Wait(ctx context.Context, bytes int) error {
 		return nil
 	}
 
-	r.mu.Lock()
-	limiter := r.limiter
-	r.mu.Unlock()
-
 	// Wait for the required number of bytes (1 token = 1 byte)
 	// If bytes exceed burst size, we need to wait in chunks
 	for bytes > 0 {
+		r.mu.Lock()
+		limiter := r.limiter
+		burstSize := limiter.Burst()
+		r.mu.Unlock()
+
 		waitAmount := bytes
-		if waitAmount > limiter.Burst() {
-			waitAmount = limiter.Burst()
+		if waitAmount > burstSize {
+			waitAmount = burstSize
 		}
 
 		if err := limiter.WaitN(ctx, waitAmount); err != nil {
@@ -74,13 +78,18 @@ func (r *ByteRateLimiter) SetRate(targetMBps float64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	targetBytesPerSec := targetMBps * 1024 * 1024
-	burstSize := int(targetBytesPerSec * 1.5) // Use default burst multiplier
-	if burstSize < 1 {
-		burstSize = 1
-	}
+	targetBytesPerSec := targetMBps * bytesPerMB
+	burstSize := calculateBurstSize(targetBytesPerSec, defaultBurstMultiplier)
 
 	r.targetBytesPerSec = targetBytesPerSec
 	r.limiter = rate.NewLimiter(rate.Limit(targetBytesPerSec), burstSize)
 }
 
+// calculateBurstSize calculates the burst size based on target rate and multiplier
+func calculateBurstSize(targetBytesPerSec float64, burstMultiplier float64) int {
+	burstSize := int(targetBytesPerSec * burstMultiplier)
+	if burstSize < minBurstSize {
+		burstSize = minBurstSize
+	}
+	return burstSize
+}

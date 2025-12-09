@@ -592,11 +592,12 @@ func generateWorkflowTrace(
 		)
 
 		// Set span kind based on workflow step
-		if step.SpanKind == "client" {
+		switch step.SpanKind {
+		case "client":
 			childSpan.Kind = tracev1.Span_SPAN_KIND_CLIENT
-		} else if step.SpanKind == "internal" {
+		case "internal":
 			childSpan.Kind = tracev1.Span_SPAN_KIND_INTERNAL
-		} else {
+		default:
 			childSpan.Kind = tracev1.Span_SPAN_KIND_SERVER
 		}
 

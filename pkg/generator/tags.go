@@ -73,174 +73,69 @@ func GenerateTags(ctx *TagContext, config Config, rng *rand.Rand) []*commonv1.Ke
 	
 	// Infrastructure tags (always included if tags enabled, consistent per trace)
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.region",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Region,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.region", ctx.Region))
 	}
 	
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.datacenter",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Datacenter,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.datacenter", ctx.Datacenter))
 	}
 	
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.availability_zone",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.AvailabilityZone,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.availability_zone", ctx.AvailabilityZone))
 	}
 	
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.cluster",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Cluster,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.cluster", ctx.Cluster))
 	}
 	
 	// Tenant tags
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "tenant.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.TenantID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("tenant.id", ctx.TenantID))
 	}
 	
-	if rng.Float64() < tagDensity*0.7 { // 70% of tag density for customer_id
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "tenant.customer_id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.CustomerID,
-				},
-			},
-		})
+	if rng.Float64() < tagDensity*DensityMediumHigh { // 70% of tag density for customer_id
+		tags = append(tags, newStringKeyValue("tenant.customer_id", ctx.CustomerID))
 	}
 	
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "tenant.org_id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.OrgID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("tenant.org_id", ctx.OrgID))
 	}
 	
 	// Deployment tags
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "deployment.version",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Version,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("deployment.version", ctx.Version))
 	}
 	
-	if rng.Float64() < tagDensity*0.8 { // 80% of tag density for git commit
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "deployment.git_commit",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.GitCommit,
-				},
-			},
-		})
+	if rng.Float64() < tagDensity*DensityHigh { // 80% of tag density for git commit
+		tags = append(tags, newStringKeyValue("deployment.git_commit", ctx.GitCommit))
 	}
 	
-	if rng.Float64() < tagDensity*0.3 { // 30% chance for canary
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "deployment.canary",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Canary,
-				},
-			},
-		})
+	if rng.Float64() < tagDensity*DensityVeryLow { // 30% chance for canary
+		tags = append(tags, newStringKeyValue("deployment.canary", ctx.Canary))
 	}
 	
 	// Feature flags
-	if len(ctx.FeatureFlags) > 0 && rng.Float64() < tagDensity*0.6 {
+	if len(ctx.FeatureFlags) > 0 && rng.Float64() < tagDensity*DensityMedium {
 		for _, flag := range ctx.FeatureFlags {
-			tags = append(tags, &commonv1.KeyValue{
-				Key: "deployment.feature_flag",
-				Value: &commonv1.AnyValue{
-					Value: &commonv1.AnyValue_StringValue{
-						StringValue: flag,
-					},
-				},
-			})
+			tags = append(tags, newStringKeyValue("deployment.feature_flag", flag))
 		}
 	}
 	
 	// Request context tags (unique per trace but consistent across spans)
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.RequestID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("request.id", ctx.RequestID))
 	}
 	
-	if rng.Float64() < tagDensity*0.8 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.correlation_id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.CorrelationID,
-				},
-			},
-		})
+	if rng.Float64() < tagDensity*DensityHigh {
+		tags = append(tags, newStringKeyValue("request.correlation_id", ctx.CorrelationID))
 	}
 	
 	if rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.user_tier",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.UserTier,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("request.user_tier", ctx.UserTier))
 	}
 	
-	if rng.Float64() < tagDensity*0.5 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.priority",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Priority,
-				},
-			},
-		})
+	if rng.Float64() < tagDensity*DensityMediumLow {
+		tags = append(tags, newStringKeyValue("request.priority", ctx.Priority))
 	}
 	
 	return tags

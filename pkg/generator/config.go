@@ -1,5 +1,10 @@
 package generator
 
+const (
+	bytesPerMegabyte = 1024 * 1024
+	defaultFallbackTraceSize = 1000
+)
+
 // Config represents the configuration for trace generation
 type Config struct {
 	Services           int               `js:"services"`           // Number of distinct services
@@ -98,7 +103,7 @@ type ThroughputConfig struct {
 // Returns a ThroughputConfig with the calculated values
 func CalculateThroughput(config Config, targetBytesPerSec float64, numVUs int) ThroughputConfig {
 	if targetBytesPerSec <= 0 {
-		targetBytesPerSec = 1024 * 1024 // Default to 1 MB/s
+		targetBytesPerSec = bytesPerMegabyte // Default to 1 MB/s
 	}
 	if numVUs <= 0 {
 		numVUs = 1 // Default to 1 VU
@@ -107,7 +112,7 @@ func CalculateThroughput(config Config, targetBytesPerSec float64, numVUs int) T
 	// Estimate trace size
 	estimatedSizeB := EstimateTraceSizeFromConfig(config)
 	if estimatedSizeB == 0 {
-		estimatedSizeB = 1000 // Fallback estimate
+		estimatedSizeB = defaultFallbackTraceSize // Fallback estimate
 	}
 	
 	// Calculate total traces per second needed

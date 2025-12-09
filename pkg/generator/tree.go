@@ -11,19 +11,19 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-// DurationConfig configuración de duración para un nodo
+// DurationConfig configures duration for a node
 type DurationConfig struct {
 	BaseMs     int `js:"baseMs"`
 	VarianceMs int `js:"varianceMs"`
 }
 
-// CountConfig configuración de repeticiones para un hijo
+// CountConfig configures repetitions for a child
 type CountConfig struct {
 	Min int `js:"min"`
 	Max int `js:"max"`
 }
 
-// TraceTreeNode representa un nodo del árbol
+// TraceTreeNode represents a tree node
 type TraceTreeNode struct {
 	Service         string            `js:"service"`
 	Operation       string            `js:"operation"`
@@ -35,36 +35,36 @@ type TraceTreeNode struct {
 	Children        []TraceTreeEdge   `js:"children"`
 }
 
-// TraceTreeEdge representa una arista con peso y configuración
+// TraceTreeEdge represents an edge with weight and configuration
 type TraceTreeEdge struct {
 	Weight   float64        `js:"weight"`   // 0 = equiprobable
-	Parallel bool           `js:"parallel"` // Ejecutar en paralelo
-	Count    CountConfig    `js:"count"`    // Repeticiones
+	Parallel bool           `js:"parallel"` // Execute in parallel
+	Count    CountConfig    `js:"count"`    // Repetitions
 	Node     *TraceTreeNode `js:"node"`
 }
 
-// TreeContext contexto propagado en la traza
+// TreeContext holds context propagated through the trace
 type TreeContext struct {
 	Propagate   []string       `js:"propagate"`
 	Cardinality map[string]int `js:"cardinality"`
 }
 
-// TreeDefaults configuración por defecto
+// TreeDefaults holds default configuration settings
 type TreeDefaults struct {
 	UseSemanticAttributes bool    `js:"useSemanticAttributes"`
 	EnableTags            bool    `js:"enableTags"`
 	TagDensity            float64 `js:"tagDensity"`
 }
 
-// TraceTreeConfig configuración completa del árbol
+// TraceTreeConfig holds complete tree configuration
 type TraceTreeConfig struct {
-	Seed     int64          `js:"seed"` // Seed para reproducibilidad (0 = aleatorio)
+	Seed     int64          `js:"seed"` // Seed for reproducibility (0 = random)
 	Context  TreeContext    `js:"context"`
 	Defaults TreeDefaults   `js:"defaults"`
 	Root     *TraceTreeNode `js:"root"`
 }
 
-// NormalizeWeights normaliza los pesos de las aristas a 1
+// NormalizeWeights normalizes edge weights to sum to 1
 func NormalizeWeights(edges []TraceTreeEdge) {
 	defined := 0
 	total := 0.0
@@ -77,13 +77,13 @@ func NormalizeWeights(edges []TraceTreeEdge) {
 	}
 
 	if defined == 0 {
-		// Todos sin definir: equiprobables
+		// All undefined: equiprobable
 		equal := 1.0 / float64(len(edges))
 		for i := range edges {
 			edges[i].Weight = equal
 		}
 	} else {
-		// Normalizar definidos a 1
+		// Normalize defined weights to 1
 		for i := range edges {
 			if edges[i].Weight > 0 {
 				edges[i].Weight /= total
@@ -92,13 +92,13 @@ func NormalizeWeights(edges []TraceTreeEdge) {
 	}
 }
 
-// SelectChildren selecciona hijos basado en probabilidades
+// SelectChildren selects children based on probabilities
 func SelectChildren(edges []TraceTreeEdge, rng *rand.Rand) []TraceTreeEdge {
 	selected := make([]TraceTreeEdge, 0)
 
 	for _, edge := range edges {
 		if rng.Float64() < edge.Weight {
-			// Determinar cuántas veces ejecutar
+			// Determine how many times to execute
 			count := 1
 			if edge.Count.Max > 0 {
 				if edge.Count.Min < edge.Count.Max {
@@ -115,7 +115,7 @@ func SelectChildren(edges []TraceTreeEdge, rng *rand.Rand) []TraceTreeEdge {
 	return selected
 }
 
-// filterParallel filtra aristas por el flag parallel
+// filterParallel filters edges by the parallel flag
 func filterParallel(edges []TraceTreeEdge, parallel bool) []TraceTreeEdge {
 	result := make([]TraceTreeEdge, 0)
 	for _, e := range edges {
@@ -126,9 +126,9 @@ func filterParallel(edges []TraceTreeEdge, parallel bool) []TraceTreeEdge {
 	return result
 }
 
-// GenerateTraceFromTree genera una traza desde un árbol configurado
+// GenerateTraceFromTree generates a trace from a configured tree
 func GenerateTraceFromTree(config TraceTreeConfig) ptrace.Traces {
-	// Inicializar RNG con seed si está definido
+	// Initialize RNG with seed if defined
 	var rng *rand.Rand
 	if config.Seed != 0 {
 		rng = rand.New(rand.NewSource(config.Seed))
@@ -136,38 +136,38 @@ func GenerateTraceFromTree(config TraceTreeConfig) ptrace.Traces {
 		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
 
-	// Inicializar cardinality manager
+	// Initialize cardinality manager
 	cm := GetCardinalityManager()
 	if len(config.Context.Cardinality) > 0 {
 		cm.SetConfig(config.Context.Cardinality)
 	}
-	// Resetear pools si hay seed para reproducibilidad
+	// Reset pools if seed is provided for reproducibility
 	if config.Seed != 0 {
 		cm.ResetPools()
 	}
 
-	// Crear contexto de traza
+	// Create trace context
 	traceCtx := NewTreeTraceContext(config.Context, rng)
 
-	// Generar trace ID (usar RNG para reproducibilidad si hay seed)
+	// Generate trace ID (use RNG for reproducibility if seed provided)
 	traceID := make([]byte, 16)
 	if config.Seed != 0 {
-		// Usar RNG para reproducibilidad
+		// Use RNG for reproducibility
 		for i := 0; i < 16; i++ {
 			traceID[i] = byte(rng.Intn(256))
 		}
 	} else {
-		// Aleatorio si no hay seed
+		// Random if no seed
 		cryptoRand.Read(traceID)
 	}
 
-	// Crear estructura de trazas
+	// Create traces structure
 	traces := ptrace.NewTraces()
 
-	// Tiempo de inicio de la traza
+	// Trace start time
 	traceStartTime := time.Now().Add(-time.Duration(rng.Intn(3600)) * time.Second)
 
-	// Generar spans desde el árbol
+	// Generate spans from tree
 	spansByService := make(map[string][]*tracev1.Span)
 	generateSpansFromNode(
 		config.Root,
@@ -180,19 +180,19 @@ func GenerateTraceFromTree(config TraceTreeConfig) ptrace.Traces {
 		spansByService,
 	)
 
-	// Agrupar spans por servicio y crear ResourceSpans
+	// Group spans by service and create ResourceSpans
 	for serviceName, spans := range spansByService {
 		rs := traces.ResourceSpans().AppendEmpty()
 		resource := rs.Resource()
 
-		// Atributos de recurso para el servicio
+		// Resource attributes for the service
 		resourceAttrs := generateResourceAttributes(serviceName, rng)
 		resourceAttrs["service.name"] = serviceName
 		for key, value := range resourceAttrs {
 			resource.Attributes().PutStr(key, value)
 		}
 
-		// Agregar spans al scope
+		// Add spans to scope
 		scopeSpans := rs.ScopeSpans().AppendEmpty()
 		for _, protoSpan := range spans {
 			span := scopeSpans.Spans().AppendEmpty()
@@ -203,7 +203,7 @@ func GenerateTraceFromTree(config TraceTreeConfig) ptrace.Traces {
 	return traces
 }
 
-// generateSpansFromNode genera spans recursivamente desde un nodo
+// generateSpansFromNode recursively generates spans from a node
 func generateSpansFromNode(
 	node *TraceTreeNode,
 	parentSpan *tracev1.Span,
@@ -218,25 +218,25 @@ func generateSpansFromNode(
 		return nil
 	}
 
-	// Calcular duración
+	// Calculate duration
 	duration := calculateDurationFromConfig(node.Duration, rng)
 
-	// Determinar tiempo de inicio
+	// Determine start time
 	var startTime time.Time
 	if parentSpan == nil {
-		// Nodo raíz
+		// Root node
 		startTime = parentStartTime
 	} else {
-		// Hijo: debe empezar después del padre y terminar antes
+		// Child: must start after parent and end before parent
 		parentStart := time.Unix(0, int64(parentSpan.StartTimeUnixNano))
 		parentEnd := time.Unix(0, int64(parentSpan.EndTimeUnixNano))
 		parentDuration := parentEnd.Sub(parentStart)
 
-		// Delay aleatorio dentro del padre (hasta 30% del tiempo del padre)
+		// Random delay within parent (up to 30% of parent time)
 		delay := time.Duration(rng.Float64() * 0.3 * float64(parentDuration))
 		startTime = parentStart.Add(delay)
 
-		// Asegurar que el hijo termine antes del padre
+		// Ensure child ends before parent
 		maxEnd := parentEnd.Add(-time.Millisecond * 10)
 		if startTime.Add(duration).After(maxEnd) {
 			duration = maxEnd.Sub(startTime)
@@ -248,10 +248,10 @@ func generateSpansFromNode(
 
 	endTime := startTime.Add(duration)
 
-	// Convertir spanKind string a enum
+	// Convert spanKind string to enum
 	spanKind := parseSpanKind(node.SpanKind)
 
-	// Determinar si hay error
+	// Determine if there's an error
 	hasError := rng.Float64() < node.ErrorRate
 	status := &tracev1.Status{
 		Code: tracev1.Status_STATUS_CODE_OK,
@@ -261,7 +261,7 @@ func generateSpansFromNode(
 		status.Message = getRandomErrorMessage(rng)
 	}
 
-	// Crear span ID (usar RNG para reproducibilidad)
+	// Create span ID (use RNG for reproducibility)
 	spanID := make([]byte, 8)
 	for i := 0; i < 8; i++ {
 		spanID[i] = byte(rng.Intn(256))
@@ -283,7 +283,7 @@ func generateSpansFromNode(
 		Status:            status,
 	}
 
-	// Agregar atributos
+	// Add attributes
 	attrs := make([]*commonv1.KeyValue, 0)
 
 	// Service name
@@ -296,7 +296,7 @@ func generateSpansFromNode(
 		},
 	})
 
-	// Tags del nodo
+	// Node tags
 	for key, value := range node.Tags {
 		attrs = append(attrs, &commonv1.KeyValue{
 			Key: key,
@@ -308,13 +308,13 @@ func generateSpansFromNode(
 		})
 	}
 
-	// Atributos semánticos si están habilitados
+	// Semantic attributes if enabled
 	if config.Defaults.UseSemanticAttributes {
 		semanticAttrs := generateSemanticAttributes(spanKind, node.Service, rng)
 		attrs = append(attrs, semanticAttrs...)
 	}
 
-	// Tags de infraestructura si están habilitados
+	// Infrastructure tags if enabled
 	if config.Defaults.EnableTags {
 		tagAttrs := traceCtx.GetPropagatedTags(config.Defaults.TagDensity, rng)
 		attrs = append(attrs, tagAttrs...)
@@ -322,25 +322,25 @@ func generateSpansFromNode(
 
 	span.Attributes = attrs
 
-	// Agregar span a la colección por servicio
+	// Add span to service collection
 	if spansByService[node.Service] == nil {
 		spansByService[node.Service] = make([]*tracev1.Span, 0)
 	}
 	spansByService[node.Service] = append(spansByService[node.Service], span)
 
-	// Procesar hijos
+	// Process children
 	if len(node.Children) > 0 {
-		// Normalizar pesos
+		// Normalize weights
 		NormalizeWeights(node.Children)
 
-		// Seleccionar hijos
+		// Select children
 		selectedChildren := SelectChildren(node.Children, rng)
 
-		// Separar paralelos y secuenciales
+		// Separate parallel and sequential
 		parallel := filterParallel(selectedChildren, true)
 		sequential := filterParallel(selectedChildren, false)
 
-		// Procesar secuenciales primero
+		// Process sequential first
 		currentTime := startTime
 		for _, childEdge := range sequential {
 			childSpan := generateSpansFromNode(
@@ -354,7 +354,7 @@ func generateSpansFromNode(
 				spansByService,
 			)
 			if childSpan != nil {
-				// Actualizar tiempo para el siguiente hijo secuencial
+				// Update time for next sequential child
 				childEnd := time.Unix(0, int64(childSpan.EndTimeUnixNano))
 				if childEnd.After(currentTime) {
 					currentTime = childEnd
@@ -362,9 +362,9 @@ func generateSpansFromNode(
 			}
 		}
 
-		// Procesar paralelos (pueden solaparse)
+		// Process parallel (can overlap)
 		for _, childEdge := range parallel {
-			// Delay aleatorio dentro del tiempo disponible
+			// Random delay within available time
 			availableTime := endTime.Sub(currentTime)
 			if availableTime > 0 {
 				delay := time.Duration(rng.Float64() * 0.2 * float64(availableTime))
@@ -381,7 +381,7 @@ func generateSpansFromNode(
 					spansByService,
 				)
 
-				// Si el hijo falla y errorPropagates está activo, marcar el padre como error
+				// If child fails and errorPropagates is active, mark parent as error
 				if childSpan != nil && childSpan.Status != nil &&
 					childSpan.Status.Code == tracev1.Status_STATUS_CODE_ERROR &&
 					childEdge.Node.ErrorPropagates {
@@ -397,7 +397,7 @@ func generateSpansFromNode(
 	return span
 }
 
-// calculateDurationFromConfig calcula duración desde configuración
+// calculateDurationFromConfig calculates duration from configuration
 func calculateDurationFromConfig(dur DurationConfig, rng *rand.Rand) time.Duration {
 	base := float64(dur.BaseMs)
 	if base <= 0 {
@@ -415,7 +415,7 @@ func calculateDurationFromConfig(dur DurationConfig, rng *rand.Rand) time.Durati
 	return time.Duration(duration) * time.Millisecond
 }
 
-// parseSpanKind convierte string a SpanKind
+// parseSpanKind converts string to SpanKind
 func parseSpanKind(kindStr string) tracev1.Span_SpanKind {
 	switch kindStr {
 	case "server":
@@ -433,7 +433,7 @@ func parseSpanKind(kindStr string) tracev1.Span_SpanKind {
 	}
 }
 
-// getRandomErrorMessage retorna un mensaje de error aleatorio
+// getRandomErrorMessage returns a random error message
 func getRandomErrorMessage(rng *rand.Rand) string {
 	errorMessages := []string{
 		"connection timeout",

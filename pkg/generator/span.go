@@ -18,13 +18,6 @@ func generateSpanID() []byte {
 	return id
 }
 
-// generateTraceID generates a random trace ID
-func generateTraceID() []byte {
-	id := make([]byte, 16)
-	rand.Read(id)
-	return id
-}
-
 // generateAttributeValue generates a random attribute value of specified size
 func generateAttributeValue(size int) string {
 	if size <= 0 {
@@ -269,13 +262,13 @@ func buildSpanWithContext(
 // calculateSpanSize estimates the size of a span in bytes
 func calculateSpanSize(span *tracev1.Span) int {
 	size := 0
-	
+
 	// Trace ID, Span ID, Parent Span ID
 	size += len(span.TraceId) + len(span.SpanId) + len(span.ParentSpanId)
-	
+
 	// Name
 	size += len(span.Name)
-	
+
 	// Attributes
 	for _, attr := range span.Attributes {
 		size += len(attr.Key)
@@ -286,7 +279,7 @@ func calculateSpanSize(span *tracev1.Span) int {
 			size += 8 // int64
 		}
 	}
-	
+
 	// Events
 	for _, event := range span.Events {
 		size += len(event.Name)
@@ -297,7 +290,7 @@ func calculateSpanSize(span *tracev1.Span) int {
 			}
 		}
 	}
-	
+
 	return size
 }
 
@@ -320,4 +313,3 @@ func generateServiceName(index int) string {
 	}
 	return fmt.Sprintf("service-%d", index)
 }
-

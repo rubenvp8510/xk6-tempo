@@ -6,7 +6,7 @@ import (
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 )
 
-// TreeTraceContext mantiene IDs consistentes durante la generación de una traza
+// TreeTraceContext maintains consistent IDs during trace generation
 type TreeTraceContext struct {
 	UserID         string
 	OrderID        string
@@ -30,12 +30,12 @@ type TreeTraceContext struct {
 	ProductID      string
 }
 
-// NewTreeTraceContext crea un nuevo contexto de traza desde configuración
+// NewTreeTraceContext creates a new trace context from configuration
 func NewTreeTraceContext(config TreeContext, rng *rand.Rand) *TreeTraceContext {
 	cm := GetCardinalityManager()
 	ctx := &TreeTraceContext{}
 
-	// Generar valores basados en lo que se debe propagar
+	// Generate values based on what should be propagated
 	for _, propKey := range config.Propagate {
 		switch propKey {
 		case "user_id":
@@ -84,7 +84,7 @@ func NewTreeTraceContext(config TreeContext, rng *rand.Rand) *TreeTraceContext {
 	return ctx
 }
 
-// GetPropagatedTags retorna los tags propagados como atributos
+// GetPropagatedTags returns propagated tags as attributes
 func (ctx *TreeTraceContext) GetPropagatedTags(tagDensity float64, rng *rand.Rand) []*commonv1.KeyValue {
 	tags := make([]*commonv1.KeyValue, 0)
 
@@ -97,227 +97,87 @@ func (ctx *TreeTraceContext) GetPropagatedTags(tagDensity float64, rng *rand.Ran
 
 	// Infrastructure tags
 	if ctx.Region != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.region",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Region,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.region", ctx.Region))
 	}
 
 	if ctx.Datacenter != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.datacenter",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Datacenter,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.datacenter", ctx.Datacenter))
 	}
 
 	if ctx.AvailabilityZone != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.availability_zone",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.AvailabilityZone,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.availability_zone", ctx.AvailabilityZone))
 	}
 
 	if ctx.Cluster != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "infrastructure.cluster",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Cluster,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("infrastructure.cluster", ctx.Cluster))
 	}
 
 	// Tenant tags
 	if ctx.TenantID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "tenant.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.TenantID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("tenant.id", ctx.TenantID))
 	}
 
-	if ctx.CustomerID != "" && rng.Float64() < tagDensity*0.7 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "tenant.customer_id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.CustomerID,
-				},
-			},
-		})
+	if ctx.CustomerID != "" && rng.Float64() < tagDensity*DensityMediumHigh {
+		tags = append(tags, newStringKeyValue("tenant.customer_id", ctx.CustomerID))
 	}
 
 	if ctx.OrgID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "tenant.org_id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.OrgID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("tenant.org_id", ctx.OrgID))
 	}
 
 	// Deployment tags
 	if ctx.Version != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "deployment.version",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Version,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("deployment.version", ctx.Version))
 	}
 
-	if ctx.GitCommit != "" && rng.Float64() < tagDensity*0.8 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "deployment.git_commit",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.GitCommit,
-				},
-			},
-		})
+	if ctx.GitCommit != "" && rng.Float64() < tagDensity*DensityHigh {
+		tags = append(tags, newStringKeyValue("deployment.git_commit", ctx.GitCommit))
 	}
 
-	if ctx.Canary != "" && rng.Float64() < tagDensity*0.3 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "deployment.canary",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Canary,
-				},
-			},
-		})
+	if ctx.Canary != "" && rng.Float64() < tagDensity*DensityVeryLow {
+		tags = append(tags, newStringKeyValue("deployment.canary", ctx.Canary))
 	}
 
 	// Request context tags
 	if ctx.RequestID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.RequestID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("request.id", ctx.RequestID))
 	}
 
-	if ctx.CorrelationID != "" && rng.Float64() < tagDensity*0.8 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.correlation_id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.CorrelationID,
-				},
-			},
-		})
+	if ctx.CorrelationID != "" && rng.Float64() < tagDensity*DensityHigh {
+		tags = append(tags, newStringKeyValue("request.correlation_id", ctx.CorrelationID))
 	}
 
 	if ctx.UserTier != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.user_tier",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.UserTier,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("request.user_tier", ctx.UserTier))
 	}
 
-	if ctx.Priority != "" && rng.Float64() < tagDensity*0.5 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "request.priority",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.Priority,
-				},
-			},
-		})
+	if ctx.Priority != "" && rng.Float64() < tagDensity*DensityMediumLow {
+		tags = append(tags, newStringKeyValue("request.priority", ctx.Priority))
 	}
 
 	// Business context tags
 	if ctx.UserID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "user.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.UserID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("user.id", ctx.UserID))
 	}
 
 	if ctx.OrderID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "order.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.OrderID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("order.id", ctx.OrderID))
 	}
 
-	if ctx.SessionID != "" && rng.Float64() < tagDensity*0.8 {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "session.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.SessionID,
-				},
-			},
-		})
+	if ctx.SessionID != "" && rng.Float64() < tagDensity*DensityHigh {
+		tags = append(tags, newStringKeyValue("session.id", ctx.SessionID))
 	}
 
 	if ctx.PaymentID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "payment.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.PaymentID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("payment.id", ctx.PaymentID))
 	}
 
 	if ctx.ShipmentID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "shipment.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.ShipmentID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("shipment.id", ctx.ShipmentID))
 	}
 
 	if ctx.ProductID != "" && rng.Float64() < tagDensity {
-		tags = append(tags, &commonv1.KeyValue{
-			Key: "product.id",
-			Value: &commonv1.AnyValue{
-				Value: &commonv1.AnyValue_StringValue{
-					StringValue: ctx.ProductID,
-				},
-			},
-		})
+		tags = append(tags, newStringKeyValue("product.id", ctx.ProductID))
 	}
 
 	return tags
