@@ -46,64 +46,64 @@ func DefaultQueryConfig() QueryConfig {
 // QueryWorkloadConfig represents configuration for query workload testing
 type QueryWorkloadConfig struct {
 	// Rate limiting
-	TargetQPS      float64 `js:"targetQPS"`      // Target queries per second
+	TargetQPS       float64 `js:"targetQPS"`       // Target queries per second
 	BurstMultiplier float64 `js:"burstMultiplier"` // Burst multiplier (default: 2.0)
-	QPSMultiplier   float64 `js:"qpsMultiplier"`  // QPS multiplier for compensation (default: 1.0)
-	
+	QPSMultiplier   float64 `js:"qpsMultiplier"`   // QPS multiplier for compensation (default: 1.0)
+
 	// Backoff configuration
-	EnableBackoff   bool    `js:"enableBackoff"`   // Enable adaptive backoff (default: true)
-	MinBackoffMs    int     `js:"minBackoffMs"`    // Minimum backoff in ms (default: 200)
-	MaxBackoffMs    int     `js:"maxBackoffMs"`    // Maximum backoff in ms (default: 30000)
-	BackoffJitter   bool    `js:"backoffJitter"`   // Add jitter to backoff (default: true)
-	
+	EnableBackoff bool `js:"enableBackoff"` // Enable adaptive backoff (default: true)
+	MinBackoffMs  int  `js:"minBackoffMs"`  // Minimum backoff in ms (default: 200)
+	MaxBackoffMs  int  `js:"maxBackoffMs"`  // Maximum backoff in ms (default: 30000)
+	BackoffJitter bool `js:"backoffJitter"` // Add jitter to backoff (default: true)
+
 	// Time buckets for query distribution
 	TimeBuckets []TimeBucketConfig `js:"timeBuckets"`
-	
+
 	// Execution plan
 	ExecutionPlan []PlanEntry `js:"executionPlan"`
-	
+
 	// Search and fetch workflow
 	TraceFetchProbability float64 `js:"traceFetchProbability"` // Probability of fetching trace after search (0.0-1.0, default: 0.1)
-	
+
 	// Time window jitter
 	TimeWindowJitterMs int `js:"timeWindowJitterMs"` // Jitter to add to time windows in ms (default: 0)
 }
 
 // TimeBucketConfig represents a time bucket for query distribution
 type TimeBucketConfig struct {
-	Name     string `js:"name"`     // Bucket name/identifier
-	AgeStart string `js:"ageStart"` // Start age (e.g., "1h", "30m")
-	AgeEnd   string `js:"ageEnd"`   // End age (e.g., "2h", "1h")
-	Weight   float64 `js:"weight"`  // Weight for selection (default: 1.0)
+	Name     string  `js:"name"`     // Bucket name/identifier
+	AgeStart string  `js:"ageStart"` // Start age (e.g., "1h", "30m")
+	AgeEnd   string  `js:"ageEnd"`   // End age (e.g., "2h", "1h")
+	Weight   float64 `js:"weight"`   // Weight for selection (default: 1.0)
 }
 
 // PlanEntry represents an entry in the execution plan
 type PlanEntry struct {
-	QueryName string  `js:"queryName"` // Name of the query to execute
-	BucketName string `js:"bucketName"` // Name of the time bucket to use
-	Weight    float64 `js:"weight"`    // Weight for selection (default: 1.0)
+	QueryName  string  `js:"queryName"`  // Name of the query to execute
+	BucketName string  `js:"bucketName"` // Name of the time bucket to use
+	Weight     float64 `js:"weight"`     // Weight for selection (default: 1.0)
 }
 
 // QueryDefinition represents a query definition
 type QueryDefinition struct {
-	Name      string            `js:"name"`      // Query name/identifier
-	Query     string            `js:"query"`    // TraceQL query string
-	Limit     int               `js:"limit"`    // Result limit (default: 20)
-	Options   map[string]interface{} `js:"options"` // Additional options
+	Name    string                 `js:"name"`    // Query name/identifier
+	Query   string                 `js:"query"`   // TraceQL query string
+	Limit   int                    `js:"limit"`   // Result limit (default: 20)
+	Options map[string]interface{} `js:"options"` // Additional options
 }
 
 // DefaultQueryWorkloadConfig returns a config with sensible defaults
 func DefaultQueryWorkloadConfig() QueryWorkloadConfig {
 	return QueryWorkloadConfig{
-		TargetQPS:           10.0,
-		BurstMultiplier:     2.0,
-		QPSMultiplier:       1.0,
-		EnableBackoff:       true,
-		MinBackoffMs:        200,
-		MaxBackoffMs:        30000,
-		BackoffJitter:       true,
+		TargetQPS:             10.0,
+		BurstMultiplier:       2.0,
+		QPSMultiplier:         1.0,
+		EnableBackoff:         true,
+		MinBackoffMs:          200,
+		MaxBackoffMs:          30000,
+		BackoffJitter:         true,
 		TraceFetchProbability: 0.1,
-		TimeWindowJitterMs:  0,
+		TimeWindowJitterMs:    0,
 		TimeBuckets: []TimeBucketConfig{
 			{
 				Name:     "recent",
@@ -114,9 +114,9 @@ func DefaultQueryWorkloadConfig() QueryWorkloadConfig {
 		},
 		ExecutionPlan: []PlanEntry{
 			{
-				QueryName: "default",
+				QueryName:  "default",
 				BucketName: "recent",
-				Weight: 1.0,
+				Weight:     1.0,
 			},
 		},
 	}
@@ -128,21 +128,20 @@ func (tb *TimeBucketConfig) ParseTimeRanges(elapsed time.Duration) (start time.T
 	if err != nil {
 		return time.Time{}, time.Time{}, false, err
 	}
-	
+
 	ageEnd, err := time.ParseDuration(tb.AgeEnd)
 	if err != nil {
 		return time.Time{}, time.Time{}, false, err
 	}
-	
+
 	// Bucket is only eligible if enough time has elapsed
 	if elapsed < ageEnd {
 		return time.Time{}, time.Time{}, false, nil
 	}
-	
+
 	now := time.Now()
 	end = now.Add(-ageStart)
 	start = now.Add(-ageEnd)
-	
+
 	return start, end, true, nil
 }
-

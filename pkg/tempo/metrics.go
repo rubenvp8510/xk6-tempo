@@ -25,14 +25,14 @@ func RecordIngestionWithContext(state *lib.State, m *tempoMetrics, testCtx *Test
 	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
-	
+
 	now := time.Now()
 	ctx := context.Background()
-	
+
 	// Get tags from state
 	// Tags must not be nil to avoid nil pointer dereference in k6 metrics system
 	tags := state.Tags.GetCurrentValues().Tags
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -41,7 +41,7 @@ func RecordIngestionWithContext(state *lib.State, m *tempoMetrics, testCtx *Test
 		},
 		Value: float64(bytes),
 	})
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -50,7 +50,7 @@ func RecordIngestionWithContext(state *lib.State, m *tempoMetrics, testCtx *Test
 		},
 		Value: float64(traces),
 	})
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -59,7 +59,7 @@ func RecordIngestionWithContext(state *lib.State, m *tempoMetrics, testCtx *Test
 		},
 		Value: metrics.D(duration),
 	})
-	
+
 	// Calculate rate (bytes per second)
 	if duration.Seconds() > 0 {
 		rate := float64(bytes) / duration.Seconds()
@@ -84,13 +84,13 @@ func RecordQueryDetailed(state *lib.State, m *tempoMetrics, duration time.Durati
 	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
-	
+
 	now := time.Now()
 	ctx := context.Background()
-	
+
 	// Get tags from state
 	tags := state.Tags.GetCurrentValues().Tags
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -99,7 +99,7 @@ func RecordQueryDetailed(state *lib.State, m *tempoMetrics, duration time.Durati
 		},
 		Value: metrics.D(duration),
 	})
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -108,7 +108,7 @@ func RecordQueryDetailed(state *lib.State, m *tempoMetrics, duration time.Durati
 		},
 		Value: 1,
 	})
-	
+
 	if !success {
 		metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 			Time: now,
@@ -118,7 +118,7 @@ func RecordQueryDetailed(state *lib.State, m *tempoMetrics, duration time.Durati
 			},
 			Value: 1,
 		})
-		
+
 		if statusCode > 0 {
 			metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 				Time: now,
@@ -130,7 +130,7 @@ func RecordQueryDetailed(state *lib.State, m *tempoMetrics, duration time.Durati
 			})
 		}
 	}
-	
+
 	if spans > 0 {
 		metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 			Time: now,
@@ -148,13 +148,13 @@ func RecordBackoff(state *lib.State, m *tempoMetrics, duration time.Duration) {
 	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
-	
+
 	now := time.Now()
 	ctx := context.Background()
-	
+
 	// Get tags from state
 	tags := state.Tags.GetCurrentValues().Tags
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -163,7 +163,7 @@ func RecordBackoff(state *lib.State, m *tempoMetrics, duration time.Duration) {
 		},
 		Value: 1,
 	})
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -185,15 +185,15 @@ func RecordTraceFetch(metricsState *MetricsState, duration time.Duration, succes
 	if metricsState == nil || metricsState.State == nil || metricsState.State.Samples == nil || metricsState.Metrics == nil {
 		return
 	}
-	
+
 	now := time.Now()
 	state := metricsState.State
 	m := metricsState.Metrics
 	ctx := context.Background()
-	
+
 	// Get tags from state
 	tags := state.Tags.GetCurrentValues().Tags
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -202,7 +202,7 @@ func RecordTraceFetch(metricsState *MetricsState, duration time.Duration, succes
 		},
 		Value: metrics.D(duration),
 	})
-	
+
 	if !success {
 		metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 			Time: now,
@@ -220,13 +220,13 @@ func RecordTimeBucketQuery(state *lib.State, m *tempoMetrics, bucketName string,
 	if state == nil || state.Samples == nil || m == nil {
 		return
 	}
-	
+
 	now := time.Now()
 	ctx := context.Background()
-	
+
 	// Get tags from state
 	tags := state.Tags.GetCurrentValues().Tags
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -235,7 +235,7 @@ func RecordTimeBucketQuery(state *lib.State, m *tempoMetrics, bucketName string,
 		},
 		Value: 1,
 	})
-	
+
 	metrics.PushIfNotDone(ctx, state.Samples, metrics.Sample{
 		Time: now,
 		TimeSeries: metrics.TimeSeries{
@@ -245,4 +245,3 @@ func RecordTimeBucketQuery(state *lib.State, m *tempoMetrics, bucketName string,
 		Value: metrics.D(duration),
 	})
 }
-

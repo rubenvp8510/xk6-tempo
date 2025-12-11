@@ -251,7 +251,7 @@ func (mi *ModuleInstance) generateBatch(config map[string]interface{}) ([]ptrace
 	traceConfig := generator.DefaultConfig()
 	if traceCfgMap, ok := config["traceConfig"].(map[string]interface{}); ok {
 		populateConfigFromMap(&traceConfig, traceCfgMap)
-		
+
 		// Handle special case for goja.Value conversion
 		if _, ok := traceCfgMap["useWorkflows"].(bool); !ok {
 			if val := traceCfgMap["useWorkflows"]; val != nil {

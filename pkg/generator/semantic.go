@@ -268,11 +268,11 @@ func generateSemanticAttributes(kind tracev1.Span_SpanKind, serviceName string, 
 // generateBusinessAttributes generates business domain attributes based on workflow context
 func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config Config, rng *rand.Rand) []*commonv1.KeyValue {
 	attrs := make([]*commonv1.KeyValue, 0)
-	
+
 	if ctx == nil {
 		return attrs
 	}
-	
+
 	density := config.BusinessAttributesDensity
 	if density <= 0 {
 		density = 0.8 // Default 80%
@@ -280,7 +280,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 	if density > 1 {
 		density = 1
 	}
-	
+
 	// Add user_id to most services
 	if rng.Float64() < density && ctx.UserID != "" {
 		attrs = append(attrs, &commonv1.KeyValue{
@@ -292,7 +292,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 			},
 		})
 	}
-	
+
 	// Service-specific business attributes
 	switch serviceName {
 	case "auth":
@@ -328,7 +328,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 				},
 			})
 		}
-		
+
 	case "payment":
 		if rng.Float64() < density && ctx.PaymentID != "" {
 			attrs = append(attrs, &commonv1.KeyValue{
@@ -384,7 +384,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 				},
 			})
 		}
-		
+
 	case "database":
 		if rng.Float64() < density*0.8 {
 			tables := []string{"users", "orders", "products", "sessions", "payments", "shipments"}
@@ -431,7 +431,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 				},
 			})
 		}
-		
+
 	case "cache":
 		if rng.Float64() < density {
 			cacheKey := fmt.Sprintf("cache:%s:%d", serviceName, rng.Intn(10000))
@@ -466,7 +466,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 				},
 			})
 		}
-		
+
 	case "shipping":
 		if rng.Float64() < density && ctx.ShipmentID != "" {
 			attrs = append(attrs, &commonv1.KeyValue{
@@ -511,7 +511,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 				},
 			})
 		}
-		
+
 	case "analytics":
 		if rng.Float64() < density {
 			events := []string{"page_view", "click", "purchase", "search", "login", "logout"}
@@ -546,7 +546,7 @@ func generateBusinessAttributes(ctx *WorkflowContext, serviceName string, config
 				},
 			})
 		}
-		
+
 	case "frontend", "backend":
 		if rng.Float64() < density && ctx.OrderID != "" {
 			attrs = append(attrs, &commonv1.KeyValue{
@@ -603,4 +603,3 @@ func generateResourceAttributes(serviceName string, rng *rand.Rand) map[string]s
 
 	return attrs
 }
-

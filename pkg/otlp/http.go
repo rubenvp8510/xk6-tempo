@@ -14,10 +14,10 @@ import (
 
 // HTTPExporter exports traces via OTLP HTTP
 type HTTPExporter struct {
-	client     *http.Client
-	endpoint   string
-	tenant     string
-	headers    map[string]string
+	client   *http.Client
+	endpoint string
+	tenant   string
+	headers  map[string]string
 }
 
 // NewHTTPExporter creates a new HTTP exporter
@@ -48,7 +48,7 @@ func NewHTTPExporter(endpoint string, tenant string, timeout time.Duration) *HTT
 func (e *HTTPExporter) ExportTraces(ctx context.Context, traces ptrace.Traces) error {
 	// Convert ptrace.Traces to OTLP request
 	req := ptraceotlp.NewExportRequestFromTraces(traces)
-	
+
 	// Serialize to protobuf
 	data, err := req.MarshalProto()
 	if err != nil {
@@ -90,7 +90,7 @@ func (e *HTTPExporter) ExportBatch(ctx context.Context, traces []ptrace.Traces) 
 		// Merge resource spans
 		trace.ResourceSpans().MoveAndAppendTo(combined.ResourceSpans())
 	}
-	
+
 	return e.ExportTraces(ctx, combined)
 }
 
@@ -99,4 +99,3 @@ func (e *HTTPExporter) Shutdown(ctx context.Context) error {
 	// HTTP client doesn't need explicit shutdown
 	return nil
 }
-

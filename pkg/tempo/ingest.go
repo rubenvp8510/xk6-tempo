@@ -176,4 +176,3 @@ func estimateTraceSizeRough(trace ptrace.Traces) int {
 	}
 	return size
 }
-

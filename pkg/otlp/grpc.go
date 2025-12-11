@@ -51,7 +51,7 @@ func NewGRPCExporter(endpoint string, tenant string, timeout time.Duration) (*GR
 	return &GRPCExporter{
 		client:   client,
 		endpoint: endpoint,
-		tenant:    tenant,
+		tenant:   tenant,
 	}, nil
 }
 
@@ -104,4 +104,3 @@ func containsPort(endpoint string) bool {
 	}
 	return false
 }
-

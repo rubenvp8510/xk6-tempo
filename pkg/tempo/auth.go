@@ -59,4 +59,3 @@ func readTokenFromFile(path string) (string, error) {
 	}
 	return strings.TrimSpace(string(data)), nil
 }
-

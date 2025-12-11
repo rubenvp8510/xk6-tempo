@@ -13,7 +13,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// CreateQueryWorkload creates a query workload manager  
+// CreateQueryWorkload creates a query workload manager
 func CreateQueryWorkload(queryClient *QueryClient, vu VU, m *tempoMetrics, workloadConfig map[string]interface{}, queries map[string]interface{}) (*QueryWorkload, error) {
 	// Parse workload config
 	cfg := DefaultQueryWorkloadConfig()
@@ -233,7 +233,7 @@ func (qw *QueryWorkload) executeNext(ctx context.Context) (*SearchResponse, erro
 	searchStart := time.Now()
 	result, httpResp, err := qw.queryClient.searchWithHTTP(ctx, queryDef.Query, options)
 	searchDuration := time.Since(searchStart)
-	
+
 	// Record metrics
 	statusCode := 0
 	if httpResp != nil {
@@ -247,7 +247,7 @@ func (qw *QueryWorkload) executeNext(ctx context.Context) (*SearchResponse, erro
 		RecordQueryDetailed(qw.state.VU.State(), qw.metrics, searchDuration, spans, err == nil, planEntry.QueryName, statusCode)
 		RecordTimeBucketQuery(qw.state.VU.State(), qw.metrics, planEntry.BucketName, searchDuration)
 	}
-	
+
 	// Handle HTTP response for backoff
 	oldBackoff := qw.backoffDuration
 	if httpResp != nil {
@@ -263,7 +263,7 @@ func (qw *QueryWorkload) executeNext(ctx context.Context) (*SearchResponse, erro
 		qw.backoffDuration = 0
 		qw.backoffMutex.Unlock()
 	}
-	
+
 	// Record backoff if it changed
 	if qw.config.EnableBackoff && qw.backoffDuration > oldBackoff && qw.state.VU.State() != nil {
 		RecordBackoff(qw.state.VU.State(), qw.metrics, qw.backoffDuration-oldBackoff)
@@ -290,12 +290,12 @@ func (qw *QueryWorkload) executeSearchAndFetch(ctx context.Context) error {
 		fetchStart := time.Now()
 		_, httpResp, fetchErr := qw.queryClient.getTraceWithHTTP(ctx, traceID)
 		fetchDuration := time.Since(fetchStart)
-		
+
 		// Handle HTTP response for backoff
 		if httpResp != nil {
 			qw.HandleHTTPResponse(httpResp)
 		}
-		
+
 		// Record trace fetch metrics
 		metricsState := &MetricsState{
 			State:   qw.state.VU.State(),
@@ -380,7 +380,7 @@ func (qw *QueryWorkload) executeWithDefaultTimeRange(ctx context.Context, queryD
 	searchStart := time.Now()
 	result, httpResp, err := qw.queryClient.searchWithHTTP(ctx, queryDef.Query, options)
 	searchDuration := time.Since(searchStart)
-	
+
 	// Record metrics
 	statusCode := 0
 	if httpResp != nil {
@@ -393,7 +393,7 @@ func (qw *QueryWorkload) executeWithDefaultTimeRange(ctx context.Context, queryD
 	if qw.state.VU.State() != nil {
 		RecordQueryDetailed(qw.state.VU.State(), qw.metrics, searchDuration, spans, err == nil, queryDef.Name, statusCode)
 	}
-	
+
 	if httpResp != nil {
 		qw.HandleHTTPResponse(httpResp)
 	} else if err != nil {
@@ -433,7 +433,6 @@ func (qw *QueryWorkload) applyBackoff(ctx context.Context) {
 		}
 	}
 }
-
 
 // HandleHTTPResponse processes HTTP response and updates backoff based on status
 func (qw *QueryWorkload) HandleHTTPResponse(resp *http.Response) {
@@ -515,4 +514,3 @@ func CalculateBurstSize(perWorkerQPS float64, burstMultiplier float64) int {
 	}
 	return burst
 }
-

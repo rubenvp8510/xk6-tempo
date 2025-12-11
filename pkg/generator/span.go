@@ -115,20 +115,6 @@ func generateStatus(config Config, rng *rand.Rand) *tracev1.Status {
 	}
 }
 
-// buildSpan creates a span with the given configuration
-func buildSpan(
-	traceID []byte,
-	parentSpanID []byte,
-	spanIndex int,
-	depth int,
-	serviceName string,
-	config Config,
-	startTime time.Time,
-	rng *rand.Rand,
-) *tracev1.Span {
-	return buildSpanWithContext(traceID, parentSpanID, spanIndex, depth, serviceName, config, startTime, rng, nil, nil, "")
-}
-
 // buildSpanWithContext creates a span with workflow context and tag context
 func buildSpanWithContext(
 	traceID []byte,
@@ -257,41 +243,6 @@ func buildSpanWithContext(
 	}
 
 	return span
-}
-
-// calculateSpanSize estimates the size of a span in bytes
-func calculateSpanSize(span *tracev1.Span) int {
-	size := 0
-
-	// Trace ID, Span ID, Parent Span ID
-	size += len(span.TraceId) + len(span.SpanId) + len(span.ParentSpanId)
-
-	// Name
-	size += len(span.Name)
-
-	// Attributes
-	for _, attr := range span.Attributes {
-		size += len(attr.Key)
-		if strVal := attr.Value.GetStringValue(); strVal != "" {
-			size += len(strVal)
-		}
-		if intVal := attr.Value.GetIntValue(); intVal != 0 {
-			size += 8 // int64
-		}
-	}
-
-	// Events
-	for _, event := range span.Events {
-		size += len(event.Name)
-		for _, attr := range event.Attributes {
-			size += len(attr.Key)
-			if strVal := attr.Value.GetStringValue(); strVal != "" {
-				size += len(strVal)
-			}
-		}
-	}
-
-	return size
 }
 
 // generateServiceName generates a service name based on index

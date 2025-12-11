@@ -8,26 +8,26 @@ import (
 
 // TreeTraceContext maintains consistent IDs during trace generation
 type TreeTraceContext struct {
-	UserID         string
-	OrderID        string
-	CorrelationID  string
-	SessionID      string
-	TenantID       string
-	Region         string
-	Datacenter     string
+	UserID           string
+	OrderID          string
+	CorrelationID    string
+	SessionID        string
+	TenantID         string
+	Region           string
+	Datacenter       string
 	AvailabilityZone string
-	Cluster        string
-	OrgID          string
-	CustomerID     string
-	Version        string
-	GitCommit      string
-	Canary         string
-	UserTier       string
-	Priority       string
-	RequestID      string
-	PaymentID      string
-	ShipmentID     string
-	ProductID      string
+	Cluster          string
+	OrgID            string
+	CustomerID       string
+	Version          string
+	GitCommit        string
+	Canary           string
+	UserTier         string
+	Priority         string
+	RequestID        string
+	PaymentID        string
+	ShipmentID       string
+	ProductID        string
 }
 
 // NewTreeTraceContext creates a new trace context from configuration
@@ -39,45 +39,45 @@ func NewTreeTraceContext(config TreeContext, rng *rand.Rand) *TreeTraceContext {
 	for _, propKey := range config.Propagate {
 		switch propKey {
 		case "user_id":
-			ctx.UserID = cm.GetValue("customer_id", rng)
+			ctx.UserID = cm.GetValue("customer_id", rng, config.Cardinality)
 		case "order_id":
-			ctx.OrderID = cm.GetValue("order_id", rng)
+			ctx.OrderID = cm.GetValue("order_id", rng, config.Cardinality)
 		case "correlation_id":
-			ctx.CorrelationID = cm.GetValue("correlation_id", rng)
+			ctx.CorrelationID = cm.GetValue("correlation_id", rng, config.Cardinality)
 		case "session_id":
-			ctx.SessionID = cm.GetValue("session_id", rng)
+			ctx.SessionID = cm.GetValue("session_id", rng, config.Cardinality)
 		case "tenant_id":
-			ctx.TenantID = cm.GetValue("tenant_id", rng)
+			ctx.TenantID = cm.GetValue("tenant_id", rng, config.Cardinality)
 		case "region":
-			ctx.Region = cm.GetValue("region", rng)
+			ctx.Region = cm.GetValue("region", rng, config.Cardinality)
 		case "datacenter":
-			ctx.Datacenter = cm.GetValue("datacenter", rng)
+			ctx.Datacenter = cm.GetValue("datacenter", rng, config.Cardinality)
 		case "availability_zone":
-			ctx.AvailabilityZone = cm.GetValue("availability_zone", rng)
+			ctx.AvailabilityZone = cm.GetValue("availability_zone", rng, config.Cardinality)
 		case "cluster":
-			ctx.Cluster = cm.GetValue("cluster", rng)
+			ctx.Cluster = cm.GetValue("cluster", rng, config.Cardinality)
 		case "org_id":
-			ctx.OrgID = cm.GetValue("org_id", rng)
+			ctx.OrgID = cm.GetValue("org_id", rng, config.Cardinality)
 		case "customer_id":
-			ctx.CustomerID = cm.GetValue("customer_id", rng)
+			ctx.CustomerID = cm.GetValue("customer_id", rng, config.Cardinality)
 		case "version":
-			ctx.Version = cm.GetValue("version", rng)
+			ctx.Version = cm.GetValue("version", rng, config.Cardinality)
 		case "git_commit":
-			ctx.GitCommit = cm.GetValue("git_commit", rng)
+			ctx.GitCommit = cm.GetValue("git_commit", rng, config.Cardinality)
 		case "canary":
-			ctx.Canary = cm.GetValue("canary", rng)
+			ctx.Canary = cm.GetValue("canary", rng, config.Cardinality)
 		case "user_tier":
-			ctx.UserTier = cm.GetValue("user_tier", rng)
+			ctx.UserTier = cm.GetValue("user_tier", rng, config.Cardinality)
 		case "priority":
-			ctx.Priority = cm.GetValue("priority", rng)
+			ctx.Priority = cm.GetValue("priority", rng, config.Cardinality)
 		case "request_id":
-			ctx.RequestID = cm.GetValue("request_id", rng)
+			ctx.RequestID = cm.GetValue("request_id", rng, config.Cardinality)
 		case "payment_id":
-			ctx.PaymentID = cm.GetValue("payment_id", rng)
+			ctx.PaymentID = cm.GetValue("payment_id", rng, config.Cardinality)
 		case "shipment_id":
-			ctx.ShipmentID = cm.GetValue("shipment_id", rng)
+			ctx.ShipmentID = cm.GetValue("shipment_id", rng, config.Cardinality)
 		case "product_id":
-			ctx.ProductID = cm.GetValue("product_id", rng)
+			ctx.ProductID = cm.GetValue("product_id", rng, config.Cardinality)
 		}
 	}
 
@@ -182,4 +182,3 @@ func (ctx *TreeTraceContext) GetPropagatedTags(tagDensity float64, rng *rand.Ran
 
 	return tags
 }
-

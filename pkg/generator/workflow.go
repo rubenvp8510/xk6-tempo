@@ -23,15 +23,15 @@ type Workflow struct {
 
 // WorkflowContext holds context that flows through a workflow
 type WorkflowContext struct {
-	WorkflowName string
-	UserID       string
-	OrderID      string
-	ProductID    string
-	SessionID    string
-	CartID       string
-	PaymentID    string
-	ShipmentID   string
-	RequestID    string
+	WorkflowName  string
+	UserID        string
+	OrderID       string
+	ProductID     string
+	SessionID     string
+	CartID        string
+	PaymentID     string
+	ShipmentID    string
+	RequestID     string
 	CorrelationID string
 }
 
@@ -132,13 +132,13 @@ func SelectWorkflow(weights map[string]float64, rng *rand.Rand) string {
 		}
 		return workflowNames[rng.Intn(len(workflowNames))]
 	}
-	
+
 	// Normalize weights
 	totalWeight := 0.0
 	for _, weight := range weights {
 		totalWeight += weight
 	}
-	
+
 	if totalWeight == 0 {
 		// Fallback to uniform
 		workflowNames := make([]string, 0, len(workflows))
@@ -147,11 +147,11 @@ func SelectWorkflow(weights map[string]float64, rng *rand.Rand) string {
 		}
 		return workflowNames[rng.Intn(len(workflowNames))]
 	}
-	
+
 	// Weighted random selection
 	r := rng.Float64() * totalWeight
 	currentWeight := 0.0
-	
+
 	for workflowName, weight := range weights {
 		currentWeight += weight
 		if r <= currentWeight {
@@ -161,12 +161,12 @@ func SelectWorkflow(weights map[string]float64, rng *rand.Rand) string {
 			}
 		}
 	}
-	
+
 	// Fallback to first workflow
 	for name := range workflows {
 		return name
 	}
-	
+
 	return "place_order" // Ultimate fallback
 }
 
@@ -177,32 +177,32 @@ func GetWorkflow(name string) (Workflow, bool) {
 }
 
 // GenerateWorkflowContext creates a new workflow context with business IDs
-func GenerateWorkflowContext(workflowName string, rng *rand.Rand) *WorkflowContext {
+func GenerateWorkflowContext(workflowName string, rng *rand.Rand, cardConfig map[string]int) *WorkflowContext {
 	cm := GetCardinalityManager()
-	
+
 	ctx := &WorkflowContext{
-		WorkflowName: workflowName,
-		UserID:       cm.GetValue("customer_id", rng), // Reuse customer_id pool
-		SessionID:    cm.GetValue("session_id", rng),
-		RequestID:    cm.GetValue("request_id", rng),
-		CorrelationID: cm.GetValue("correlation_id", rng),
+		WorkflowName:  workflowName,
+		UserID:        cm.GetValue("customer_id", rng, cardConfig), // Reuse customer_id pool
+		SessionID:     cm.GetValue("session_id", rng, cardConfig),
+		RequestID:     cm.GetValue("request_id", rng, cardConfig),
+		CorrelationID: cm.GetValue("correlation_id", rng, cardConfig),
 	}
-	
+
 	// Generate workflow-specific IDs
 	switch workflowName {
 	case "place_order", "process_refund":
-		ctx.OrderID = cm.GetValue("order_id", rng)
-		ctx.PaymentID = cm.GetValue("payment_id", rng)
+		ctx.OrderID = cm.GetValue("order_id", rng, cardConfig)
+		ctx.PaymentID = cm.GetValue("payment_id", rng, cardConfig)
 		if workflowName == "place_order" {
 			ctx.ProductID = fmt.Sprintf("product-%06d", rng.Intn(10000)+1)
-			ctx.ShipmentID = cm.GetValue("shipment_id", rng)
+			ctx.ShipmentID = cm.GetValue("shipment_id", rng, cardConfig)
 		}
 	case "browse_products", "search_products":
 		ctx.ProductID = fmt.Sprintf("product-%06d", rng.Intn(10000)+1)
 	case "user_registration":
-		ctx.UserID = cm.GetValue("customer_id", rng) // New user
+		ctx.UserID = cm.GetValue("customer_id", rng, cardConfig) // New user
 	}
-	
+
 	return ctx
 }
 
@@ -250,4 +250,3 @@ func GetWorkflowSteps(workflowName string) []WorkflowStep {
 	}
 	return wf.Steps
 }
-

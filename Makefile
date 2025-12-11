@@ -1,4 +1,4 @@
-.PHONY: build test clean run-example install-xk6 docker-build docker-push
+.PHONY: build test format clean run-example install-xk6 docker-build docker-push
 
 # Docker image configuration
 DOCKER_REGISTRY ?= quay.io
@@ -38,6 +38,10 @@ build: install-xk6 deps
 # Run go tests
 test:
 	$(GO_CMD) test ./...
+
+# Format Go code
+format:
+	$(GO_CMD) fmt ./...
 
 # Run example ingestion test
 run-ingestion:

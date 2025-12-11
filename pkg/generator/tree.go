@@ -138,9 +138,7 @@ func GenerateTraceFromTree(config TraceTreeConfig) ptrace.Traces {
 
 	// Initialize cardinality manager
 	cm := GetCardinalityManager()
-	if len(config.Context.Cardinality) > 0 {
-		cm.SetConfig(config.Context.Cardinality)
-	}
+
 	// Reset pools if seed is provided for reproducibility
 	if config.Seed != 0 {
 		cm.ResetPools()

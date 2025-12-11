@@ -26,12 +26,6 @@ func GenerateTrace(config Config) ptrace.Traces {
 		return GenerateTraceFromTree(*config.TraceTreeConfig)
 	}
 
-	// Initialize cardinality manager with config
-	cm := GetCardinalityManager()
-	if len(config.CardinalityConfig) > 0 {
-		cm.SetConfig(config.CardinalityConfig)
-	}
-
 	traces := ptrace.NewTraces()
 	resourceSpans := traces.ResourceSpans().AppendEmpty()
 
@@ -64,7 +58,7 @@ func GenerateTrace(config Config) ptrace.Traces {
 	var workflowName string
 	if config.UseWorkflows {
 		workflowName = SelectWorkflow(config.WorkflowWeights, rng)
-		workflowCtx = GenerateWorkflowContext(workflowName, rng)
+		workflowCtx = GenerateWorkflowContext(workflowName, rng, config.CardinalityConfig)
 	}
 
 	// Generate spans

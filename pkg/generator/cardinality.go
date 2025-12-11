@@ -21,7 +21,6 @@ type CardinalityManager struct {
 	mu          sync.RWMutex
 	valuePools  map[string][]string
 	cardinality map[string]int // Current cardinality per attribute
-	config      map[string]int // User overrides
 }
 
 var globalCardinalityManager *CardinalityManager
@@ -33,7 +32,6 @@ func GetCardinalityManager() *CardinalityManager {
 		globalCardinalityManager = &CardinalityManager{
 			valuePools:  make(map[string][]string),
 			cardinality: make(map[string]int),
-			config:      make(map[string]int),
 		}
 	})
 	return globalCardinalityManager
@@ -44,84 +42,90 @@ func DefaultCardinality(attrName string) int {
 	// Define default cardinality tiers
 	defaults := map[string]int{
 		// Low cardinality (5-10 values)
-		"region":              8,
-		"datacenter":          6,
-		"environment":         3,
-		"http.method":         5,
+		"region":                 8,
+		"datacenter":             6,
+		"environment":            3,
+		"http.method":            5,
 		"deployment.environment": 3,
-		"canary":              2,
-		"user_tier":           4,
-		"priority":            3,
-		"version":             4,
-		
+		"canary":                 2,
+		"user_tier":              4,
+		"priority":               3,
+		"version":                4,
+
 		// Medium cardinality (50-100 values)
-		"http.status_code":    10,
-		"error_type":          15,
-		"availability_zone":   50,
-		"cluster":             75,
-		"tenant_id":           50,
-		"org_id":              50,
-		"git_commit":          100,
-		"feature_flags":       20,
-		
+		"http.status_code":  10,
+		"error_type":        15,
+		"availability_zone": 50,
+		"cluster":           75,
+		"tenant_id":         50,
+		"org_id":            50,
+		"git_commit":        100,
+		"feature_flags":     20,
+
 		// High cardinality (1000-10000 values)
-		"customer_id":         5000,
-		"pod_name":            2000,
-		"k8s.pod.name":        2000,
-		"host.name":           1000,
-		
+		"customer_id":  5000,
+		"pod_name":     2000,
+		"k8s.pod.name": 2000,
+		"host.name":    1000,
+
 		// Very high (unique per trace/span) - return 0 to indicate unique
-		"trace_id":            0,
-		"span_id":             0,
-		"order_id":            0,
-		"request_id":         0,
-		"correlation_id":      0,
-		"payment_id":          0,
-		"shipment_id":         0,
-		"session_id":          0,
+		"trace_id":       0,
+		"span_id":        0,
+		"order_id":       0,
+		"request_id":     0,
+		"correlation_id": 0,
+		"payment_id":     0,
+		"shipment_id":    0,
+		"session_id":     0,
 	}
-	
+
 	if val, ok := defaults[attrName]; ok {
 		return val
 	}
-	
+
 	// Default to medium cardinality for unknown attributes
 	return 50
 }
 
-// SetConfig sets user-defined cardinality overrides
-func (cm *CardinalityManager) SetConfig(config map[string]int) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	cm.config = config
-}
-
 // GetValue returns a value for an attribute with appropriate cardinality
-func (cm *CardinalityManager) GetValue(attrName string, rng *rand.Rand) string {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	
+func (cm *CardinalityManager) GetValue(attrName string, rng *rand.Rand, cardConfig map[string]int) string {
 	// Check user override first
-	cardinality := cm.config[attrName]
-	if cardinality == 0 {
+	cardinality := 0
+	if val, ok := cardConfig[attrName]; ok {
+		cardinality = val
+	} else {
 		// Use default
 		cardinality = DefaultCardinality(attrName)
 	}
-	
+
 	// Very high cardinality means unique value
 	if cardinality == 0 {
 		return cm.generateUniqueValue(attrName, rng)
 	}
-	
-	// Get or create value pool
+
+	// Try with read lock first
+	cm.mu.RLock()
 	pool, exists := cm.valuePools[attrName]
+	poolLen := len(pool)
+	cm.mu.RUnlock()
+
+	if exists && poolLen >= cardinality {
+		return pool[rng.Intn(poolLen)]
+	}
+
+	// Need to generate/update pool, switch to write lock
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	// Double check
+	pool, exists = cm.valuePools[attrName]
 	if !exists || len(pool) < cardinality {
 		// Generate pool
 		pool = cm.generateValuePool(attrName, cardinality, rng)
 		cm.valuePools[attrName] = pool
 		cm.cardinality[attrName] = len(pool)
 	}
-	
+
 	// Return random value from pool
 	return pool[rng.Intn(len(pool))]
 }
@@ -129,7 +133,7 @@ func (cm *CardinalityManager) GetValue(attrName string, rng *rand.Rand) string {
 // generateValuePool creates a pool of values for an attribute
 func (cm *CardinalityManager) generateValuePool(attrName string, size int, rng *rand.Rand) []string {
 	pool := make([]string, 0, size)
-	
+
 	// Generate values based on attribute name patterns
 	for i := 0; i < size; i++ {
 		var value string
@@ -223,7 +227,7 @@ func (cm *CardinalityManager) generateValuePool(attrName string, size int, rng *
 		}
 		pool = append(pool, value)
 	}
-	
+
 	return pool
 }
 
@@ -265,7 +269,7 @@ func randomHexString(length int, rng *rand.Rand) string {
 func (cm *CardinalityManager) GetCardinalityStats() map[string]int {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	
+
 	stats := make(map[string]int)
 	for attr, count := range cm.cardinality {
 		stats[attr] = count
@@ -277,8 +281,7 @@ func (cm *CardinalityManager) GetCardinalityStats() map[string]int {
 func (cm *CardinalityManager) ResetPools() {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	
+
 	cm.valuePools = make(map[string][]string)
 	cm.cardinality = make(map[string]int)
 }
-
