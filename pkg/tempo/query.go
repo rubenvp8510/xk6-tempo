@@ -11,6 +11,68 @@ import (
 	"time"
 )
 
+// FlexInt handles JSON numbers that may be strings or integers
+type FlexInt int
+
+func (fi *FlexInt) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 {
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		if s == "" {
+			*fi = 0
+			return nil
+		}
+		i, err := strconv.Atoi(s)
+		if err != nil {
+			return err
+		}
+		*fi = FlexInt(i)
+		return nil
+	}
+	var i int
+	if err := json.Unmarshal(b, &i); err != nil {
+		return err
+	}
+	*fi = FlexInt(i)
+	return nil
+}
+
+// FlexInt64 handles JSON numbers that may be strings or int64
+type FlexInt64 int64
+
+func (fi *FlexInt64) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 {
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		if s == "" {
+			*fi = 0
+			return nil
+		}
+		i, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return err
+		}
+		*fi = FlexInt64(i)
+		return nil
+	}
+	var i int64
+	if err := json.Unmarshal(b, &i); err != nil {
+		return err
+	}
+	*fi = FlexInt64(i)
+	return nil
+}
+
 // QueryOptions represents options for trace search queries
 type QueryOptions struct {
 	Start string `js:"start"` // Relative time like "1h", "30m", or absolute timestamp
@@ -23,8 +85,8 @@ type SearchResult struct {
 	TraceID         string            `json:"traceID"`
 	RootServiceName string            `json:"rootServiceName"`
 	RootTraceName   string            `json:"rootTraceName"`
-	StartTime       int64             `json:"startTimeUnixNano"`
-	DurationMs      int64             `json:"durationMs"`
+	StartTime       FlexInt64         `json:"startTimeUnixNano"`
+	DurationMs      FlexInt64         `json:"durationMs"`
 	Tags            map[string]string `json:"tags"`
 	ServiceStats    map[string]int    `json:"serviceStats"`
 }
@@ -33,10 +95,10 @@ type SearchResult struct {
 type SearchResponse struct {
 	Traces  []SearchResult `json:"traces"`
 	Metrics struct {
-		InspectedTraces int `json:"inspectedTraces"`
-		InspectedBytes  int `json:"inspectedBytes"`
-		InspectedBlocks int `json:"inspectedBlocks"`
-		TotalBlocks     int `json:"totalBlocks"`
+		InspectedTraces FlexInt `json:"inspectedTraces"`
+		InspectedBytes  FlexInt `json:"inspectedBytes"`
+		InspectedBlocks FlexInt `json:"inspectedBlocks"`
+		TotalBlocks     FlexInt `json:"totalBlocks"`
 	} `json:"metrics"`
 }
 
@@ -64,8 +126,8 @@ type Span struct {
 	ParentSpanID string                 `json:"parentSpanId"`
 	Name         string                 `json:"name"`
 	Kind         string                 `json:"kind"`
-	StartTime    int64                  `json:"startTimeUnixNano"`
-	EndTime      int64                  `json:"endTimeUnixNano"`
+	StartTime    FlexInt64              `json:"startTimeUnixNano"`
+	EndTime      FlexInt64              `json:"endTimeUnixNano"`
 	Attributes   map[string]interface{} `json:"attributes"`
 	Status       map[string]interface{} `json:"status"`
 	Events       []interface{}          `json:"events"`
