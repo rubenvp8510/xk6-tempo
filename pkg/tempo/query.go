@@ -264,8 +264,8 @@ func (c *QueryClient) getTrace(ctx context.Context, traceID string) (*Trace, err
 
 // getTraceWithHTTP retrieves a full trace by trace ID and returns HTTP response info (internal, requires context)
 func (c *QueryClient) getTraceWithHTTP(ctx context.Context, traceID string) (*Trace, *http.Response, error) {
-	// Build URL - Tempo API v2 uses /api/v2/traces/{traceID}
-	apiURL := fmt.Sprintf("%s/api/v2/traces/%s", c.baseURL, traceID)
+	// Build URL - Tempo legacy API uses /api/traces/{traceID}
+	apiURL := fmt.Sprintf("%s/api/traces/%s", c.baseURL, traceID)
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
