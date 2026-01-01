@@ -82,13 +82,13 @@ type QueryOptions struct {
 
 // SearchResult represents a single search result
 type SearchResult struct {
-	TraceID         string            `json:"traceID"`
-	RootServiceName string            `json:"rootServiceName"`
-	RootTraceName   string            `json:"rootTraceName"`
-	StartTime       FlexInt64         `json:"startTimeUnixNano"`
-	DurationMs      FlexInt64         `json:"durationMs"`
-	Tags            map[string]string `json:"tags"`
-	ServiceStats    map[string]int    `json:"serviceStats"`
+	TraceID         string                 `json:"traceID"`
+	RootServiceName string                 `json:"rootServiceName"`
+	RootTraceName   string                 `json:"rootTraceName"`
+	StartTime       FlexInt64              `json:"startTimeUnixNano"`
+	DurationMs      FlexInt64              `json:"durationMs"`
+	Tags            map[string]string      `json:"tags"`
+	ServiceStats    map[string]interface{} `json:"serviceStats"`
 }
 
 // SearchResponse represents the response from Tempo search API
